@@ -15,12 +15,12 @@ PREFIX ?= /usr/local
 
 
 all:
-	( cd bin && make CFLAGS=$(CFLAGS) PREFIX=$(PREFIX) )
-	( cd man && make CFLAGS=$(CFLAGS) PREFIX=$(PREFIX) )
+	( cd bin && make PREFIX=$(PREFIX) )
+	( cd man && make PREFIX=$(PREFIX) )
 
 clean:
-	( cd bin && make CFLAGS=$(CFLAGS) PREFIX=$(PREFIX) clean )
-	( cd man && make CFLAGS=$(CFLAGS) PREFIX=$(PREFIX) clean )
+	( cd bin && make PREFIX=$(PREFIX) clean )
+	( cd man && make PREFIX=$(PREFIX) clean )
 
 install:
 	( cd bin && make CFLAGS=$(CFLAGS) PREFIX=$(PREFIX) install )
