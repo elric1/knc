@@ -23,5 +23,5 @@ clean:
 	( cd man && make PREFIX=$(PREFIX) clean )
 
 install:
-	( cd bin && make CFLAGS=$(CFLAGS) PREFIX=$(PREFIX) install )
-	( cd man && make CFLAGS=$(CFLAGS) PREFIX=$(PREFIX) install )
+	( cd bin && make PREFIX=$(PREFIX) install )
+	( cd man && make PREFIX=$(PREFIX) install )
