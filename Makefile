@@ -1,7 +1,7 @@
 #
 # main Makefile
 
-PREFIX=/usr/local
+PREFIX ?= /usr/local
 
 all:
 	( cd bin && make PREFIX=$(PREFIX) )
