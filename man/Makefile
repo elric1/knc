@@ -8,5 +8,5 @@ clean:
 	rm knc.0
 
 install:
-	install -c -m644 knc.1 $(PREFIX)/man/man1/
-	install -c -m644 knc.0 $(PREFIX)/man/cat1/
+	install -c -m644 knc.1 $(DESTDIR)/$(PREFIX)/man/man1/
+	install -c -m644 knc.0 $(DESTDIR)/$(PREFIX)/man/cat1/

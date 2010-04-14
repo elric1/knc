@@ -20,4 +20,4 @@ clean:
 	rm -f knc knc.o gssstdio.o
 
 install:
-	install -c -m 755 knc $(PREFIX)/bin
+	install -c -m 755 knc $(DESTDIR)/$(PREFIX)/bin
