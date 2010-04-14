@@ -2,9 +2,16 @@
 # The Makefile...
 
 CFLAGS += -DKNC_VERSION_STRING=\"1.6\"
-CFLAGS += -DHEIMDAL
 
+#
+# For Heimdal uncomment:
+CFLAGS += -DHEIMDAL
 LDADD = -lgssapi -lkrb5
+
+#
+# For MIT krb5 uncomment:
+#
+# LDADD = -lgssapi_krb5
 
 knc: knc.o gssstdio.o
 	cc -o $@ $> $(LDADD)
