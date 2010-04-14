@@ -2,7 +2,7 @@
 
 /*-
  * Copyright 2009  Morgan Stanley and Co. Incorporated
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
  * "Software"), to deal in the Software without restriction, including
@@ -10,10 +10,10 @@
  * distribute, sublicense, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject
  * to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
@@ -333,7 +333,7 @@ main(int argc, char **argv) {
 	}
 
 	/* adjust number of remaining arguments */
-	argc -= optind; 
+	argc -= optind;
 
 	/* Non-inetd listener requires <service> <port> and optional prog
 	   inetd listener requires <service> and optional prog
@@ -378,7 +378,7 @@ main(int argc, char **argv) {
 			fprintf(stderr, "-a doesn't work in inetd mode\n");
 			exit(1);
 		}
-		    
+
 		if (!do_bind_addr(prefs.bindaddr, &prefs.addr))
 			exit(1);
 	}
@@ -435,7 +435,6 @@ do_bind_addr(const char *s, struct sockaddr_in *sa) {
 	 * and populate the name field with the given address, but it will not
 	 * properly populate the rest of the hostent structure, including
 	 * the h_addr_list.
-	 * 
 	 */
 #if defined(MY_SOLARIS)
 	if ((sa->sin_addr.s_addr = inet_addr(s)) != -1)
@@ -625,7 +624,7 @@ write_local_buffer(work_t *work) {
 	}
 
 	/* the "out" portion of our buffer is now properly set up */
-	len = write(work->local_out, 
+	len = write(work->local_out,
 		    &(work->local_buffer.out[work->local_buffer.out_pos]),
 		    work->local_buffer.out_len);
 	
@@ -731,7 +730,7 @@ write_network_buffer(work_t *work) {
 	}
 
 	/* the "out" portion of our buffer is now properly set up */
-	len = write(work->network_fd, 
+	len = write(work->network_fd,
 		    &(work->network_buffer.out[work->network_buffer.out_pos]),
 		    work->network_buffer.out_len);
 	
@@ -804,12 +803,12 @@ move_data(work_t *work) {
 
 	if (work->local_err != -1) {
 		select_is_the_worst_api_ever =
-		    MAX(work->network_fd, 
+		    MAX(work->network_fd,
 			MAX(work->local_err, MAX(work->local_in,
 						 work->local_out)));
 	} else {
 		select_is_the_worst_api_ever =
-		    MAX(work->network_fd, 
+		    MAX(work->network_fd,
 			MAX(work->local_in, work->local_out));
 	}
 
@@ -982,7 +981,7 @@ move_data(work_t *work) {
 			 * listening.
 			 */
 
-			if (FD_ISSET(work->network_fd, &wrset) && 
+			if (FD_ISSET(work->network_fd, &wrset) &&
 			    (work->network_buffer.out_valid ||
 			     work->network_buffer.in_valid)) {
 				mret = write_network_buffer(work);
@@ -1572,7 +1571,7 @@ do_client(int argc, char **argv) {
 		    LOG(LOG_ERR, ("invalid service@host: %s", argv[0]));
 		    return 0;
 	    }
-	    
+
 	++hostname;
 
 	if (prefs.sprinc)

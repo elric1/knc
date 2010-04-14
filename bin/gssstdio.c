@@ -2,7 +2,7 @@
 
 /*-
  * Copyright 2009  Morgan Stanley and Co. Incorporated
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
  * "Software"), to deal in the Software without restriction, including
@@ -10,10 +10,10 @@
  * distribute, sublicense, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject
  * to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
@@ -220,7 +220,7 @@ again:
 		LOG(LOG_DEBUG, ("continuing gstd_initiate"));
 		while ((ret = read_packet(fd, &in)) == -2)
 			;
-	    
+
 		if (ret < 1) {
 			LOG(LOG_ERR, ("continuation failed"));
 			return NULL;
@@ -411,7 +411,7 @@ read_packet(int fd, gss_buffer_t buf)
 		
 		LOG(LOG_ERR, ("%s", strerror(errno)));
 		return -1;
-	} 
+	}
 
 	if (ret == 0) {
 		LOG(LOG_ERR, ("EOF while reading packet (len=%d)", len));
