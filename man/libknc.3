@@ -1,0 +1,208 @@
+.\"
+.\" Copyright 2010  Morgan Stanley and Co. Incorporated
+.\"
+.\" Permission is hereby granted, free of charge, to any person obtaining
+.\" a copy of this software and associated documentation files (the
+.\" "Software"), to deal in the Software without restriction, including
+.\" without limitation the rights to use, copy, modify, merge, publish,
+.\" distribute, sublicense, and/or sell copies of the Software, and to
+.\" permit persons to whom the Software is furnished to do so, subject
+.\" to the following conditions:
+.\"
+.\" The above copyright notice and this permission notice shall be
+.\" included in all copies or substantial portions of the Software.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+.\" EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+.\" MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+.\" IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
+.\" ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+.\" CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+.\" WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+.\"
+.Dd September 8, 2010
+.Dt LIBKNC 3
+.Os
+.Sh NAME
+.Nm libknc
+.Nd Kerberised NetCat C interface
+.Sh SYNOPSIS
+.In libknc.h
+
+.Ss Client Constructors
+.Ft "struct knc_ctx *"
+.Fn knc_initiate "char *service" "char *hostname"
+.Ft "struct knc_ctx *"
+.Fn knc_init_fd "char *hostname" "char *service" "int fd"
+.Ft "struct knc_ctx *"
+.Fn knc_connect "char *hostname" "char *service" "char *port"
+.Ft "struct knc_ctx *"
+.Fn knc_connect_parse "char *hostservicespec" "int opts"
+
+.Ss Server Constructors
+.Ft "struct knc_ctx *"
+.Fn knc_accept "char *service" "char *hostname"
+.Ft "struct knc_ctx *"
+.Fn knc_accept_fd "char *service" "char *hostname" "int fd"
+
+.Ss The Simple Read/Write Interface
+.Ft int
+.Fn knc_read "struct knc_ctx *ctx" "char *buf" "int len"
+.Ft int
+.Fn knc_write "struct knc_ctx *ctx" "char *buf" "int len"
+
+.Ss The More Complex Buffer Based Interface
+.Ft int
+.Fn knc_put_buf "struct knc_ctx *ctx" "int dir" "char *" "int len"
+.Ft int
+.Fn knc_get_ibuf "struct knc_ctx *ctx" "int dir" "char **buf" "int len"
+.Ft int
+.Fn knc_get_obuf "struct knc_ctx *ctx" "int dir" "char **buf" "int len"
+.Ft int
+.Fn knc_get_obufv "struct knc_ctx *ctx" "struct iovec **vec" "int *count"
+.Ft int
+.Fn knc_drain_buf "struct knc_ctx *ctx" "int dir" "int len"
+.Ft int
+.Fn knc_fill_buf "struct knc_ctx *ctx" "int dir" "int len"
+.Ft int
+.Fn knc_fill "struct knc_ctx *ctx"
+.Ft int
+.Fn knc_flush "struct knc_ctx *ctx"
+.Ft int
+.Fn knc_avail_buf "struct knc_ctx *ctx" "int dir"
+
+.Ss Error handling
+.Ft int
+.Fn knc_error "struct knc_ctx *ctx"
+.Ft "char *"
+.Fn knc_errstr "struct knc_ctx *ctx"
+
+.Ss Garbage Collection
+.Ft void
+.Fn knc_garbage_collect "struct knc_ctx *ctx"
+.Ft int
+.Fn knc_close "struct knc_ctx *ctx"
+.Sh DESCRIPTION
+.Nm
+provides a C interface to the KNC protocol as implemented by
+.Xr knc 1 .
+.Pp
+The interface provides a data structure which describes a KNC
+connexion which can be thought of as two streams of data.
+The first is called the send stream
+.Pq Dv KNC_DIR_SEND
+which is destined for the remote side of the connexion, this is the
+connexion to which writes are made.
+The other is the receive stream
+.Pq Dv KNC_DIR_RECV
+which receives data from the remote side of the connexion, this is the
+connexion from which data is read.
+.Pp
+.Nm
+takes care of buffering its input and output appropriately allowing
+the setting of high and low buffer limits and the like.
+.Pp
+.Nm
+is used by first calling one of the constructor functions which
+will return a pointer to an allocated struct knc_ctx.  The constructors
+are defined as follows:
+.Bl -tag -width knc_initiateXXX
+.It Fn knc_initiate
+creates a KNC initatiator which is not attached to any file descriptors.
+.It Fn knc_init_fd
+creates a KNC initiator which is attached to the provided file descriptor.
+.It Fn knc_connect
+connects to the host and service specified.
+.El
+
+.Pp
+After a KNC context has been constructed and properly set up as according
+to the above, there are two interfaces which can be used to move data
+through.
+The first, simpler interface requires that the remote end of the connexion
+has been associated with a file descriptor either via the constructor or
+later via
+.Fn knc_set_remote_fd .
+In this case, the following functions can be used:
+.Bl -tag -width knc_writeXXX
+.It Fn knc_read
+will read data from the object, causing data to be read from the network
+if necessary.
+.Fn knc_read
+is designed to provide the same interface as
+.Xr read 2
+and as such it will return the number of bytes read, zero for EOF and
+-1 for errors.
+.It Fn knc_write
+will write data to the stream and flush the write to the network.
+.Fn knc_write
+is designed to provide the same interface as
+.Xr read 2
+and as such it will return the number of bytes written, zero for EOF and
+-1 for errors.
+.It Fn knc_close
+will close the file descriptor and free all memory.
+.El
+.Pp
+
+For more complex usage, a slightly more complex interface is provided.
+This interface should be used if it is necessary to:
+.Bl -enum
+.It
+use KNC's internal buffering to enhance performance,
+.It
+eliminate the memory copies implied by
+.Fn knc_read ,
+or
+.It
+layer KNC over another protocol.
+.El
+
+.Pp
+The functions are as follows:
+.Bl -tag -width knc_avail_bufXXX
+.It Fn knc_put_buf
+will allocate and copy the provided buffer into the input side of
+the desired stream.
+.It Fn knc_get_ibuf
+will allocate and provide a pointer to a buffer in the input side of
+the specified stream, ensuring that the buffer is of at least the
+specified length.
+The size of the returned buffer will be returned and will generally
+exceed the specified size unless a memory allocation error is encountered
+in which case -1 is returned.
+.It Fn knc_get_obuf
+will provide a pointer to the output buffer at the current location.
+The size of the output buffer is returned or -1 to indicate an error
+has occurred.
+.It Fn knc_get_obufv
+will provide a
+.Pq Dv struct iovec
+and count representing the entirety
+of the output stream which is currently ready to be sent.
+This function is designed to provide an interface to
+.Xr writev 2
+and thus save the multiple invocations of
+.Xr write 2
+which might be required to emit the data.
+.It Fn knc_drain_buf
+tells KNC that the output buffer in the specified direction has
+consumed the specified number of bytes.
+.It Fn knc_fill_buf
+tells KNC that the input buffer in the specified direction has
+had the specified number of bytes written into it.
+.It Fn knc_fill
+will call the read function pointer to retrieve input for the
+specified stream.
+.It Fn knc_flush
+will call the write function pointer to send output for the
+specified stream.
+.It Fn knc_avail_buf
+returns the approximate amount of data in the specified stream.
+.El
+
+.Sh EXAMPLES
+XXXrcd: provide two simple examples of correctly using the library.
+.Sh SEE ALSO
+.Xr knc 1 .
+
