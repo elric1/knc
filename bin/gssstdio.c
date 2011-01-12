@@ -466,7 +466,7 @@ writen(int fd, const void *buf, ssize_t len) {
 		nwritten = write(fd, buffer, len);
 
 		if (nwritten < 0) {
-			if ((errno == EINTR) || (errno = EAGAIN))
+			if ((errno == EINTR) || (errno == EAGAIN))
 				continue;
 			else {
 				LOG_ERRNO(LOG_ERR, ("write failed"));
