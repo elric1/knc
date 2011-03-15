@@ -59,6 +59,9 @@ void sigchld_handler(int);
 void usage(const char *);
 int do_bind_addr(const char *, struct sockaddr_in *);
 int setup_listener(unsigned short int);
+int connect_host(const char *, const char *);
+int connect_host_dosrv(const char *, const char *);
+int connect_host_inner(const char *, const char *);
 int reap(void);
 int getport(const char *, const char *);
 int launch_program(work_t *, int, char **);
@@ -421,6 +424,92 @@ const char *internal_hstrerror(int e) {
 		return "Unknown error";
 	}
 }
+
+
+int
+connect_host(const char *domain, const char *service)
+{
+	/*
+	 * if getaddrinfo does not do SRV records, then we must
+	 * unfortunately special case them.  We use libroken for
+	 * this.  Otherwise just call the inner function.
+	 */
+#if 0	/* XXXrcd: not yet, not yet */
+	return connect_host_dosrv(domain, service);
+#else
+	return connect_host_inner(domain, service);
+#endif
+}
+
+#if 0	/* XXXrcd: not yet, not yet */
+#define PORTSTRLEN	32
+
+int
+connect_host_dosrv(const char *domain, const char *service)
+{
+	struct	resource_record *rr;
+	struct	dns_reply *r;
+	char	portstr[PORTSTRLEN];
+	char	*qdomain;
+	int	fd;
+
+	asprintf(&qdomain, "_%s._tcp%s%s", service, *domain?".":"", domain);
+	LOG(LOG_DEBUG, ("connect_host_dosrv looking up %s", qdomain));
+	r = dns_lookup(qdomain, "SRV");
+	free(qdomain);
+	if (!r)
+		return connect_host_inner(domain, service);
+
+	dns_srv_order(r);
+
+	for (rr = r->head; rr; rr = rr->next) {
+		if (rr->type != T_SRV)
+			continue;
+		snprintf(portstr, PORTSTRLEN, "%u", rr->u.srv->port);
+		fd = connect_host_inner(rr->u.srv->target, portstr);
+		if (fd != -1)
+			break;
+	}
+	dns_free_data(r);
+	return fd;
+}
+
+#undef PORTSTRLEN
+#endif
+
+int
+connect_host_inner(const char *domain, const char *service)
+{
+	struct	addrinfo ai, *res, *res0;
+	int	ret;
+	int	s = -1;
+
+	LOG(LOG_DEBUG, ("connecting to (%s, %s)", service, domain));
+	memset(&ai, 0x0, sizeof(ai));
+	ai.ai_socktype = SOCK_STREAM;
+	ret = getaddrinfo(domain, service, &ai, &res0);
+	if (ret) {
+		LOG(LOG_ERR, ("getaddrinfo: (%s,%s) %s", domain, service,
+		    gai_strerror(ret)));
+		return -1;
+	}
+	for (res=res0; res; res=res->ai_next) {
+		s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+		if (s == -1) {
+			LOG(LOG_ERR, ("connect: %s", strerror(errno)));
+			continue;
+		}
+		ret = connect(s, res->ai_addr, res->ai_addrlen);
+		if (ret != -1)
+			break;
+		close(s);
+		s = -1;
+		LOG(LOG_ERR, ("connect: %s", strerror(errno)));
+	}
+	return s;
+}
+
+
 
 int
 do_bind_addr(const char *s, struct sockaddr_in *sa) {
@@ -1588,31 +1677,10 @@ do_client(int argc, char **argv) {
 		LOG(LOG_DEBUG, ("wrapping existing fd %d", prefs.network_fd));
 		work.network_fd = prefs.network_fd;
 	} else {
-		port = getport(argv[1], "tcp");
+		fd = connect_host(hostname, argv[1]);
 	
-		if (!do_bind_addr(hostname, &sa)) {
-			return 0;
-		}
-		
-		sa.sin_family = AF_INET;
-		sa.sin_port = port;
-		
-		if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-			LOG_ERRNO(LOG_ERR, ("failed to create socket"));
-			return 0;
-		}
-		
-		LOG(LOG_DEBUG, ("attempting to connect to %s (%s) port %d",
-				hostname, inet_ntoa(sa.sin_addr),
-				ntohs(port)));
-		
-		if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-			LOG_ERRNO(LOG_ERR, ("failed to connect to "
-					    "%s (%s) port %d",
-					    hostname, inet_ntoa(sa.sin_addr),
-					    ntohs(port)));
-			return 0;
-		}
+		if (fd == 1)
+			exit(1);	/* XXXrcd: is this right? */
 		
 		work.network_fd = fd;
 	}
