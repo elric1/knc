@@ -56,7 +56,7 @@
 #include <errno.h>
 #include <stdio.h>
 
-#include "knclib.h"
+#include <libknc.h>
 
 #define READBUFSIZ	(1024 * 1024)
 #define WRITEBUFSIZ	(1024 * 1024)
@@ -115,15 +115,13 @@ main(int argc, char **argv)
 			break;
 		}
 
-		if (FD_ISSET(fd, &wr)) {
-			knc_state_process(ctx);
+		if (FD_ISSET(fd, &wr))
 			knc_flush(ctx, KNC_DIR_SEND);
-		}
 
 		if (FD_ISSET(fd, &rd)) {
 			knc_fill(ctx, KNC_DIR_RECV);
-// continue;
-}
+			// continue;
+		}
 
 		if (FD_ISSET(0, &rd)) {
 			ret = knc_get_ibuf(ctx, KNC_DIR_SEND, &buf, 16384);
