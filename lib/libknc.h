@@ -33,12 +33,35 @@ struct knc_ctx;
 
 
 struct knc_ctx		*knc_ctx_init(void);
+void			 knc_ctx_close(struct knc_ctx *);
+struct knc_ctx		*knc_initiate(char *, char *);
+struct knc_ctx		*knc_init_fd(char *, char *, int);
 struct knc_ctx		*knc_connect(char *, char *, char *);
 struct knc_ctx		*knc_connect_parse(char *, int);
+int			 knc_accept(struct knc_ctx *);
 
 int			 knc_get_fd(struct knc_ctx *);
 
+void			 knc_set_debug(struct knc_ctx *, int);
+
 struct knc_stream	*knc_init_stream(void);
+
+int			 knc_error(struct knc_ctx *);
+const char		*knc_errstr(struct knc_ctx *);
+
+/*
+ * The simple(?) interface
+ */
+
+
+void	knc_set_local_fd(struct knc_ctx *, int);
+int	knc_get_local_fd(struct knc_ctx *);
+int	knc_get_net_fd(struct knc_ctx *);
+int	knc_read(struct knc_ctx *, char *, int);
+int	knc_write(struct knc_ctx *, char *, int);
+int	knc_fill(struct knc_ctx *, int);
+int	knc_flush(struct knc_ctx *, int);
+void	knc_garbage_collect(struct knc_ctx *);
 
 /*
  * The buffer interface allows programmers to use KNC as a simple byte
@@ -48,7 +71,12 @@ struct knc_stream	*knc_init_stream(void);
 #define KNC_DIR_RECV	0x1
 #define KNC_DIR_SEND	0x2
 
-int			 knc_put_buf(struct knc_ctx *, int, char *,  int);
-int			 knc_get_buf(struct knc_ctx *, int, char **, int);
+int	knc_put_buf(struct knc_ctx *, int, char *,  int);
+int	knc_get_ibuf(struct knc_ctx *, int, char **, int);
+int	knc_get_obuf(struct knc_ctx *, int, char **, int);
+int	knc_get_obufv(struct knc_ctx *, int dir, struct iovec **, int *);
+int	knc_drain_buf(struct knc_ctx *, int, int);
+int	knc_fill_buf(struct knc_ctx *, int, int);
+int	knc_avail_buf(struct knc_ctx *, int);
 
 

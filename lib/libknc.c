@@ -38,13 +38,13 @@
 #include <stdarg.h>
 #include <unistd.h>
 
-#include "knclib.h"
-
 #if 0
 #include <gssapi/gssapi.h>
 #endif
 #define HAS_INTTYPES_H
 #include <gssapi/gssapi_krb5.h>
+
+#include "libknc.h"
 
 struct knc_stream_bit {
 	char			*buf;
@@ -97,12 +97,12 @@ struct knc_ctx {
 	 * are not defined, they will not be executed.
 	 */
 
-	int	(*netread)(int, char *, int);
-	int	(*netwritev)(int, struct iovec *, int);
+	ssize_t	(*netread)(int, void *, size_t);
+	ssize_t	(*netwritev)(int, const struct iovec *, int);
 	int	(*netclose)(int);
 
-	int	(*localread)(int, char *, int);
-	int	(*localwritev)(int, struct iovec *, int);
+	ssize_t	(*localread)(int, void *, size_t);
+	ssize_t	(*localwritev)(int, const struct iovec *, int);
 	int	(*localclose)(int);
 };
 
@@ -126,6 +126,40 @@ static int debug = 0;
 		}				\
 	} while (0)
 
+/* Local function declarations */
+
+static void	knc_gss_error(struct knc_ctx *, int, int, const char *);
+
+static struct knc_stream_bit	*knc_alloc_stream_bit(int);
+static int			 knc_append_stream_bit(struct knc_stream *,
+				    struct knc_stream_bit *);
+
+static int	knc_put_stream(struct knc_stream *, char *, int);
+static int	knc_put_stream_gssbuf(struct knc_stream *, gss_buffer_t);
+static int	knc_get_istream(struct knc_stream *, char **, int);
+static int	knc_get_ostream(struct knc_stream *, char **, int);
+static int	knc_get_ostreamv(struct knc_stream *, struct iovec **, int *);
+static int	knc_stream_put_trash(struct knc_stream *, void *);
+static int	knc_get_ostream_contig(struct knc_stream *, char **, int);
+static int	knc_stream_drain(struct knc_stream *, int);
+static int	knc_stream_fill(struct knc_stream *, int);
+static int	knc_stream_avail(struct knc_stream *);
+static void	knc_stream_garbage_collect(struct knc_stream *);
+
+static int	read_packet(struct knc_stream *, char **b);
+static int	put_packet(struct knc_stream *, gss_buffer_t);
+
+static int	knc_state_init(struct knc_ctx *, char *, int);
+static int	knc_state_accept(struct knc_ctx *, char *, int);
+static int	knc_state_session(struct knc_ctx *, char *, int);
+static int	knc_state_process_in(struct knc_ctx *);
+static int	knc_state_process_out(struct knc_ctx *);
+static int	knc_state_process(struct knc_ctx *);
+
+static struct knc_stream *knc_find_buf(struct knc_ctx *, int, int);
+
+/* And, ta da: the code */
+
 struct knc_stream *
 knc_init_stream()
 {
@@ -136,7 +170,7 @@ knc_init_stream()
 	return s;
 }
 
-int
+static int
 knc_append_stream_bit(struct knc_stream *s, struct knc_stream_bit *b)
 {
 
@@ -157,7 +191,7 @@ knc_append_stream_bit(struct knc_stream *s, struct knc_stream_bit *b)
 	return b->len;
 }
 
-struct knc_stream_bit *
+static struct knc_stream_bit *
 knc_alloc_stream_bit(int len)
 {
 	struct knc_stream_bit	*bit;
@@ -182,7 +216,7 @@ knc_alloc_stream_bit(int len)
 	return bit;
 }
 
-int
+static int
 knc_put_stream(struct knc_stream *s, char *buf, int len)
 {
 	struct knc_stream_bit	*bit;
@@ -197,7 +231,7 @@ knc_put_stream(struct knc_stream *s, char *buf, int len)
 	return knc_append_stream_bit(s, bit);
 }
 
-int
+static int
 knc_put_stream_gssbuf(struct knc_stream *s, gss_buffer_t buf)
 {
 	struct knc_stream_bit	*bit;
@@ -222,7 +256,7 @@ knc_put_stream_gssbuf(struct knc_stream *s, gss_buffer_t buf)
 	return knc_append_stream_bit(s, bit);
 }
 
-int
+static int
 knc_get_istream(struct knc_stream *s, char **buf, int len)
 {
 	struct knc_stream_bit	*tmp;
@@ -249,10 +283,9 @@ knc_get_istream(struct knc_stream *s, char **buf, int len)
  * for writing.
  */
 
-int
+static int
 knc_get_ostream(struct knc_stream *s, char **buf, int len)
 {
-	struct knc_stream_bit	*cur;
 
 	if (!s || !s->cur) {
 		/* XXXrcd: better errors... */
@@ -269,7 +302,7 @@ knc_get_ostream(struct knc_stream *s, char **buf, int len)
 	return len;
 }
 
-int
+static int
 knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 {
 	struct knc_stream_bit	*cur;
@@ -313,7 +346,7 @@ knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 	}
 
 	*count = i;
-	knc_stream_put_trash(s, *vec);
+	knc_stream_put_trash(s, (void *) *vec);
 
 	return len;
 }
@@ -325,11 +358,10 @@ knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
  * the returned buffer.
  */
 
-int
+static int
 knc_get_ostream_contig(struct knc_stream *s, char **buf, int len)
 {
 	struct knc_stream_bit	*cur;
-	char			*tmpbuf;
 	int			 retlen;
 	int			 tmplen;
 
@@ -368,7 +400,7 @@ knc_get_ostream_contig(struct knc_stream *s, char **buf, int len)
 	return retlen;
 }
 
-int
+static int
 knc_stream_drain(struct knc_stream *s, int len)
 {
 
@@ -399,7 +431,7 @@ knc_stream_drain(struct knc_stream *s, int len)
 	return len;
 }
 
-int
+static int
 knc_stream_fill(struct knc_stream *s, int len)
 {
 
@@ -419,15 +451,15 @@ knc_stream_fill(struct knc_stream *s, int len)
 	return len;
 }
 
-int
+static int
 knc_stream_avail(struct knc_stream *s)
 {
 
 	return s->avail;
 }
 
-int
-knc_stream_put_trash(struct knc_stream *s, char *ptr)
+static int
+knc_stream_put_trash(struct knc_stream *s, void *ptr)
 {
 	struct knc_stream_gc	*tmp;
 
@@ -444,12 +476,12 @@ knc_stream_put_trash(struct knc_stream *s, char *ptr)
 }
 
 /*
- * knc_stream_clean is provided because knc_get_ostream does not actually
- * deallocate the memory that is associated with it.  knc_clean_buf()
- * will deallocate all memory between head and cur.
+ * knc_stream_garbage_collect is provided because knc_get_ostream does
+ * not actually deallocate the memory that is associated with it.
+ * knc_clean_buf() will deallocate all memory between head and cur.
  */
 
-int
+static void
 knc_stream_garbage_collect(struct knc_stream *s)
 {
 	struct knc_stream_bit	*tmpbit;
@@ -458,13 +490,13 @@ knc_stream_garbage_collect(struct knc_stream *s)
 	OM_uint32		 min;
 
 	if (!s)
-		return -1;
+		return;
 
 	while (s->head && s->head != s->cur) {
 		tmpbit = s->head->next;
 
-fprintf(stderr, "s->head = %p, s->cur = %p, tmpbit = %p\n", s->head,
-s->cur, tmpbit);
+// fprintf(stderr, "s->head = %p, s->cur = %p, tmpbit = %p\n", s->head,
+// s->cur, tmpbit);
 
 #if 1
 		if (s->head->gssbuf.value)
@@ -477,7 +509,7 @@ s->cur, tmpbit);
 		s->head = tmpbit;
 	}
 
-fprintf(stderr, "Done: s->head = %p, s->cur = %p\n", s->head, s->cur);
+// fprintf(stderr, "Done: s->head = %p, s->cur = %p\n", s->head, s->cur);
 
 	if (!s->head)
 		s->tail = s->cur = NULL;
@@ -494,7 +526,7 @@ fprintf(stderr, "Done: s->head = %p, s->cur = %p\n", s->head, s->cur);
 	s->garbage = NULL;
 }
 
-int
+static int
 read_packet(struct knc_stream *s, char **buf)
 {
 	int	 len;
@@ -525,7 +557,7 @@ read_packet(struct knc_stream *s, char **buf)
 	return len;
 }
 
-int
+static int
 put_packet(struct knc_stream *s, gss_buffer_t buf)
 {
 	u_int32_t	netlen;
@@ -533,6 +565,9 @@ put_packet(struct knc_stream *s, gss_buffer_t buf)
 	netlen = htonl(buf->length);
 	knc_put_stream(s, (char *)&netlen, 4);
 	knc_put_stream_gssbuf(s, buf);
+
+	/* XXXrcd: useful to return this?  What about errors? */
+	return 0;
 }
 
 struct knc_ctx *
@@ -567,7 +602,7 @@ knc_error(struct knc_ctx *ctx)
 	return ctx->error;
 }
 
-int
+const char *
 knc_errstr(struct knc_ctx *ctx)
 {
 
@@ -580,18 +615,12 @@ knc_accept(struct knc_ctx *ctx)
 
 	ctx->gssctx = GSS_C_NO_CONTEXT;
 	ctx->state  = STATE_ACCEPT;
+
+	/* XXXrcd: function not really finished, I think. */
+	return -1;
 }
 
-int
-knc_init(struct knc_ctx *ctx, gss_name_t server)
-{
-
-	ctx->gssctx = GSS_C_NO_CONTEXT;
-	ctx->server = server;
-	ctx->state  = STATE_INIT;
-}
-
-int
+static int
 knc_state_init(struct knc_ctx *ctx, char *buf, int len)
 {
 	gss_buffer_desc	in;
@@ -611,7 +640,7 @@ knc_state_init(struct knc_ctx *ctx, char *buf, int len)
 	    GSS_C_NO_CHANNEL_BINDINGS, &in, NULL, &out, NULL, NULL);
 
 	/* XXXrcd: better error handling... */
-	KNC_GSS_ERROR(ctx, maj, min, NULL, "gss_init_sec_context");
+	KNC_GSS_ERROR(ctx, maj, min, -1, "gss_init_sec_context");
 
 	if (out.length > 0) {
 		/* XXXrcd: memory management? */
@@ -632,7 +661,7 @@ knc_state_init(struct knc_ctx *ctx, char *buf, int len)
 	return 0;
 }
 
-int
+static int
 knc_state_accept(struct knc_ctx *ctx, char *buf, int len)
 {
 	gss_buffer_desc	 in;
@@ -653,11 +682,11 @@ knc_state_accept(struct knc_ctx *ctx, char *buf, int len)
 	in.length = len;
 
 	maj = gss_accept_sec_context(&min, &ctx->gssctx, GSS_C_NO_CREDENTIAL,
-	    &in, GSS_C_NO_CHANNEL_BINDINGS, ctx->client, NULL, &out, NULL,
+	    &in, GSS_C_NO_CHANNEL_BINDINGS, &ctx->client, NULL, &out, NULL,
 	    NULL, NULL);
 
 	/* XXXrcd: better error handling... */
-	KNC_GSS_ERROR(ctx, maj, min, NULL, "gss_accept_sec_context");
+	KNC_GSS_ERROR(ctx, maj, min, -1, "gss_accept_sec_context");
 
 	if (out.length) {
 		/*
@@ -679,7 +708,7 @@ knc_state_accept(struct knc_ctx *ctx, char *buf, int len)
 	return 0;	/* XXXrcd: ERRORS */
 }
 
-int
+static int
 knc_state_session(struct knc_ctx *ctx, char *buf, int len)
 {
 	gss_buffer_desc	in;
@@ -706,7 +735,7 @@ knc_state_session(struct knc_ctx *ctx, char *buf, int len)
 	return 0;
 }
 
-int
+static int
 knc_state_process_in(struct knc_ctx *ctx)
 {
 	char	*buf;
@@ -754,7 +783,7 @@ knc_state_process_in(struct knc_ctx *ctx)
 	return 0;
 }
 
-int
+static int
 knc_state_process_out(struct knc_ctx *ctx)
 {
 	gss_buffer_desc	 in;
@@ -817,10 +846,9 @@ knc_state_process_out(struct knc_ctx *ctx)
  * possible.
  */
 
-int
+static int
 knc_state_process(struct knc_ctx *ctx)
 {
-	int	ret;
 
 	DEBUG((stderr, "knc_state_process: enter\n"));
 
@@ -835,7 +863,7 @@ knc_state_process(struct knc_ctx *ctx)
 #define KNC_SIDE_IN	0x100
 #define KNC_SIDE_OUT	0x200
 
-struct knc_stream *
+static struct knc_stream *
 knc_find_buf(struct knc_ctx *ctx, int side, int dir)
 {
 	struct knc_stream	*s;
@@ -924,14 +952,23 @@ knc_initiate(char *service, char *hostname)
 	OM_uint32	 maj, min;
 	char		 tmp[] = "";
 
+	/*
+	 * XXXrcd: we should reorganise the whole thing a bit to ease cleanup.
+	 */
+
 	ctx = knc_ctx_init();
 	/* XXXrcd: errors... */
 
-	name.length = asprintf((char **)&name.value, "%s@%s",
-	    service, hostname);
-	DEBUG((stderr, "going to get tickets for: %s", (char *)name.value));
-	if (!name.value)
+	name.length = strlen(service) + strlen(hostname) + 1;
+	name.value = malloc(name.length + 1);
+	if (!name.value) {
+		/* XXXrcd: destroy my context? */
 		return NULL;
+	}
+
+	snprintf(name.value, name.length + 1, "%s@%s", service, hostname);
+
+	DEBUG((stderr, "going to get tickets for: %s", (char *)name.value));
 
 	maj = gss_import_name(&min, &name, GSS_C_NT_HOSTBASED_SERVICE, &server);
 
@@ -1142,7 +1179,7 @@ knc_fill(struct knc_ctx *ctx, int dir)
 		knc_fill_buf(ctx, dir, ret);
 	}
 
-	knc_state_process(ctx);
+	return knc_state_process(ctx);
 }
 
 int
@@ -1200,7 +1237,6 @@ knc_flush(struct knc_ctx *ctx, int dir)
 int
 knc_flush(struct knc_ctx *ctx, int dir)
 {
-	struct iovec	 vec[1];
 	int		 len;
 	char		*buf;
 
@@ -1323,10 +1359,9 @@ knc_errstring(char **str, int min_stat)
 	return len;
 }
 
-void
+static void
 knc_gss_error(struct knc_ctx *ctx, int maj_stat, int min_stat, const char *s)
 {
-	char	*t1;
 
 	ctx->error = KNC_ERROR_GSS;
 	if (knc_errstring(&ctx->errstr, min_stat) < 1) {
