@@ -1,0 +1,8 @@
+
+Installation instructions:
+
+	$ autoreconf -f -i
+	$ ./configure
+	$ make
+	< become appropriate user >
+	$ make install
