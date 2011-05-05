@@ -54,11 +54,14 @@
 
 #include <stdio.h>
 
-#ifdef HEIMDAL
+#if HAVE_GSSAPI_H
+#include <gssapi.h>
+#else
+#if HAVE_GSSAPI_GSSAPI_H
 #include <gssapi/gssapi.h>
 #else
-#define HAS_INTTYPES_H
 #include <gssapi/gssapi_krb5.h>
+#endif
 #endif
 
 struct gstd_tok {

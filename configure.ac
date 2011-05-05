@@ -21,8 +21,32 @@ LT_INIT([shared static win32-dll])
 
 AM_CONDITIONAL(ENABLE_SHARED, test "$enable_shared" = "yes")
 
-# Checks for header files.
-AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h malloc.h netdb.h netinet/in.h stdlib.h string.h strings.h sys/socket.h sys/time.h syslog.h unistd.h])
+AC_ARG_WITH([gss-dir],
+	    [AC_HELP_STRING([--with-gss-dir=<DIR>],
+			    [choose the GSSAPI dir])],
+	    [gssdir=$withval],
+	    [gssdir=/usr])
+
+if test -d ${gssdir}; then
+	CPPFLAGS="$CPPFLAGS -I$gssdir/include"
+	LDFLAGS="$LDFLAGS -L$gssdir/lib"
+fi
+
+AC_CHECK_HEADERS([gssapi/gssapi_krb5.h gssapi/gssapi.h gssapi.h ], break,,)
+
+AC_SEARCH_LIBS(gss_init_sec_context, [gssapi gssapi_krb5],,,)
+
+AC_CHECK_DECLS(GSS_KRB5_NT_PRINCIPAL_NAME,,,[
+#if HAVE_GSSAPI_H
+#include <gssapi.h>
+#else 
+#if HAVE_GSSAPI_GSSAPI_H
+#include <gssapi/gssapi.h>
+#else
+#include <gssapi/gssapi_krb5.h>
+#endif
+#endif
+])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_TYPE_PID_T
@@ -33,8 +57,6 @@ AC_TYPE_UINT32_T
 
 # Checks for library functions.
 AC_FUNC_FORK
-AC_FUNC_MALLOC
-AC_CHECK_FUNCS([dup2 gethostbyname inet_ntoa memset putenv select socket strchr strdup strerror strpbrk])
 
 AC_CONFIG_FILES([Makefile bin/Makefile lib/Makefile])
 AC_OUTPUT
