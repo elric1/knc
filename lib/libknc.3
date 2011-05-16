@@ -28,29 +28,25 @@
 .Nd Kerberised NetCat C interface
 .Sh SYNOPSIS
 .In libknc.h
-
 .Ss Client Constructors
 .Ft "struct knc_ctx *"
 .Fn knc_initiate "char *service" "char *hostname"
 .Ft "struct knc_ctx *"
-.Fn knc_init_fd "char *hostname" "char *service" "int fd"
+.Fn knc_init_fd "char *service" "char *hostname" "int fd"
 .Ft "struct knc_ctx *"
-.Fn knc_connect "char *hostname" "char *service" "char *port"
+.Fn knc_connect "char *service" "char *hostname" "char *port"
 .Ft "struct knc_ctx *"
 .Fn knc_connect_parse "char *hostservicespec" "int opts"
-
 .Ss Server Constructors
 .Ft "struct knc_ctx *"
 .Fn knc_accept "char *service" "char *hostname"
 .Ft "struct knc_ctx *"
 .Fn knc_accept_fd "char *service" "char *hostname" "int fd"
-
 .Ss The Simple Read/Write Interface
 .Ft int
 .Fn knc_read "struct knc_ctx *ctx" "char *buf" "int len"
 .Ft int
 .Fn knc_write "struct knc_ctx *ctx" "char *buf" "int len"
-
 .Ss The More Complex Buffer Based Interface
 .Ft int
 .Fn knc_put_buf "struct knc_ctx *ctx" "int dir" "char *" "int len"
@@ -70,13 +66,11 @@
 .Fn knc_flush "struct knc_ctx *ctx"
 .Ft int
 .Fn knc_avail_buf "struct knc_ctx *ctx" "int dir"
-
 .Ss Error handling
 .Ft int
 .Fn knc_error "struct knc_ctx *ctx"
 .Ft "char *"
 .Fn knc_errstr "struct knc_ctx *ctx"
-
 .Ss Garbage Collection
 .Ft void
 .Fn knc_garbage_collect "struct knc_ctx *ctx"
@@ -114,7 +108,6 @@ creates a KNC initiator which is attached to the provided file descriptor.
 .It Fn knc_connect
 connects to the host and service specified.
 .El
-
 .Pp
 After a KNC context has been constructed and properly set up as according
 to the above, there are two interfaces which can be used to move data
@@ -144,7 +137,6 @@ and as such it will return the number of bytes written, zero for EOF and
 will close the file descriptor and free all memory.
 .El
 .Pp
-
 For more complex usage, a slightly more complex interface is provided.
 This interface should be used if it is necessary to:
 .Bl -enum
@@ -157,7 +149,6 @@ or
 .It
 layer KNC over another protocol.
 .El
-
 .Pp
 The functions are as follows:
 .Bl -tag -width knc_avail_bufXXX
@@ -200,9 +191,7 @@ specified stream.
 .It Fn knc_avail_buf
 returns the approximate amount of data in the specified stream.
 .El
-
 .Sh EXAMPLES
 XXXrcd: provide two simple examples of correctly using the library.
 .Sh SEE ALSO
 .Xr knc 1 .
-

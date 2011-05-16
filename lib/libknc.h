@@ -31,14 +31,18 @@
 struct knc_stream;
 struct knc_ctx;
 
+/*
+ * The various constructors:
+ */
 
 struct knc_ctx		*knc_ctx_init(void);
-void			 knc_ctx_close(struct knc_ctx *);
 struct knc_ctx		*knc_initiate(char *, char *);
 struct knc_ctx		*knc_init_fd(char *, char *, int);
 struct knc_ctx		*knc_connect(char *, char *, char *);
 struct knc_ctx		*knc_connect_parse(char *, int);
-int			 knc_accept(struct knc_ctx *);
+struct knc_ctx		*knc_accept(char *, char *);
+struct knc_ctx		*knc_accept_fd(char *, char *, int);
+void			 knc_ctx_close(struct knc_ctx *);
 
 int			 knc_get_fd(struct knc_ctx *);
 
