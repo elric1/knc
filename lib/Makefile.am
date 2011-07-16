@@ -4,9 +4,6 @@ lib_LTLIBRARIES = libknc.la
 
 libknc_la_SOURCES = libknc.c
 
-libknc_la_CPPFLAGS = -DHEIMDAL
-libknc_la_LIBADD = -lgssapi
-
 #
 # Let's be a tad more aggressive about warnings:
 

@@ -7,5 +7,3 @@ bin_PROGRAMS = knc
 knc_SOURCES = knc.c gssstdio.c
 
 man_MANS = knc.1
-
-LDADD = -lgssapi
