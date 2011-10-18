@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.65])
+AC_PREREQ([2.64])
 AC_INIT([knc], [2.0], [elric@imrryr.org])
 AC_CONFIG_SRCDIR([bin/gssstdio.c])
 AC_CONFIG_HEADERS([config.h])
