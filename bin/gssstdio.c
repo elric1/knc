@@ -215,7 +215,7 @@ again:
 	if (out.length && write_packet(fd, &out))
 		return NULL;
 
-	if (GSS_ERROR(maj) && ctx == GSS_C_NO_CONTEXT) {
+	if (GSS_ERROR(maj) && ctx != GSS_C_NO_CONTEXT) {
 		gss_delete_sec_context(&min, &ctx, GSS_C_NO_BUFFER);
 		return NULL;
 	}
