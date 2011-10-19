@@ -234,6 +234,8 @@ main(int argc, char **argv) {
 			prefs.is_listener = 1;
 			break;
 		case 'i':
+			/* inetd implies listener */
+			prefs.is_listener = 1;
 			prefs.is_inetd = 1;
 			break;
 		case 'n':
@@ -262,7 +264,8 @@ main(int argc, char **argv) {
 			}
 			break;
 		case 'w':
-			/* inetd wait service implies inetd. */
+			/* inetd wait service implies inetd and listener */
+			prefs.is_listener = 1;
 			prefs.is_inetd = 1;
 			prefs.is_wait_service = 1;
 			break;
