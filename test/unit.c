@@ -106,7 +106,7 @@ runserver(int fd)
 {
 	struct knc_ctx	*ctx;
 
-	fprintf(stderr, "runserver(), pid = %d\n", getpid());
+	fprintf(stderr, "runserver(), pid == %d\n", getpid());
 	ctx = knc_accept_fd(NULL, NULL, fd);
 	return knc_loop(ctx);
 }
