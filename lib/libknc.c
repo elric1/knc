@@ -181,13 +181,6 @@ debug_printf(const char *fmt, ...)
 	fprintf(stderr, "%d: %s", getpid(), buf);
 }
 
-struct knc_stream *
-knc_init_stream(void)
-{
-
-	return calloc(1, sizeof(struct knc_stream));
-}
-
 static void
 knc_destroy_stream(struct knc_stream *s)
 {
@@ -197,7 +190,6 @@ knc_destroy_stream(struct knc_stream *s)
 
 	s->cur = NULL;
 	knc_stream_garbage_collect(s);
-	free(s);
 }
 
 static size_t
