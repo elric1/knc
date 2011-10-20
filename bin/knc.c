@@ -71,13 +71,13 @@ int do_inetd_wait(int, char **);
 int do_listener_inet(int, char **);
 int do_listener(int, int, char **);
 int do_unix_socket(work_t *);
-int fork_and_do_unix_socket(work_t *);
+int fork_and_do_unix_socket(work_t *, int);
 int do_client(int, char **);
 int send_creds(int, work_t *, const char *const, const char * const);
 int emit_key_value(work_t *, const char * const, const char * const);
 int putenv_knc_key_value(const char * const, const char * const);
 int do_work(work_t *, int, char **);
-int fork_and_do_work(work_t *, int, char **);
+int fork_and_do_work(work_t *, int, int, char **);
 int move_local_to_network_buffer(work_t *);
 int move_network_to_local_buffer(work_t *);
 void write_buffer_init(write_buffer_t *);
@@ -1356,7 +1356,7 @@ launch_program(work_t *work, int argc, char **argv) {
 }
 	
 int
-fork_and_do_work(work_t *work, int argc, char **argv) {
+fork_and_do_work(work_t *work, int listener, int argc, char **argv) {
 	pid_t pid;
 
 	pid = fork();
@@ -1366,6 +1366,7 @@ fork_and_do_work(work_t *work, int argc, char **argv) {
 		return 0;
 	} else if (pid == 0) {
 		/* child */
+		close(listener);
 		exit(!do_work(work, argc, argv));
 	}
 
@@ -1420,7 +1421,7 @@ do_unix_socket(work_t *work) {
 }
 
 int
-fork_and_do_unix_socket(work_t *work) {
+fork_and_do_unix_socket(work_t *work, int listener) {
 	pid_t pid;
 
 	pid = fork();
@@ -1430,6 +1431,7 @@ fork_and_do_unix_socket(work_t *work) {
 		return 0;
 	} else if (pid == 0) {
 		/* child */
+		close(listener);
 		exit(!do_unix_socket(work));
 	}
 
@@ -1609,7 +1611,7 @@ do_listener(int listener, int argc, char **argv) {
 			if (prefs.no_fork)
 				do_unix_socket(work);
 			else {
-				fork_and_do_unix_socket(work);
+				fork_and_do_unix_socket(work, listener);
 				++num_children;
 			}
 		} else {
@@ -1617,7 +1619,7 @@ do_listener(int listener, int argc, char **argv) {
 			if (prefs.no_fork)
 				do_work(work, argc, argv);
 			else {
-				fork_and_do_work(work, argc, argv);
+				fork_and_do_work(work, listener, argc, argv);
 				++num_children;
 			}
 		}
