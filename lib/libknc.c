@@ -1247,7 +1247,6 @@ knc_read(struct knc_ctx *ctx, void *buf, size_t len)
 	if (ret > 0) {
 		memcpy(buf, tmpbuf, ret);
 		knc_drain_buf(ctx, KNC_DIR_RECV, ret);
-		return ret;
 	}
 
 	return ret;
