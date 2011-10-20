@@ -30,32 +30,32 @@
 .In libknc.h
 .Ss Client Constructors
 .Ft "struct knc_ctx *"
-.Fn knc_initiate "char *service" "char *hostname"
+.Fn knc_initiate "const char *service" "const char *hostname"
 .Ft "struct knc_ctx *"
-.Fn knc_init_fd "char *service" "char *hostname" "int fd"
+.Fn knc_init_fd "const char *service" "const char *hostname" "int fd"
 .Ft "struct knc_ctx *"
-.Fn knc_connect "char *service" "char *hostname" "char *port"
+.Fn knc_connect "const char *service" "const char *hostname" "const char *port"
 .Ft "struct knc_ctx *"
-.Fn knc_connect_parse "char *hostservicespec" "int opts"
+.Fn knc_connect_parse "const char *hostservicespec" "int opts"
 .Ss Server Constructors
 .Ft "struct knc_ctx *"
-.Fn knc_accept "char *service" "char *hostname"
+.Fn knc_accept "const char *service" "const char *hostname"
 .Ft "struct knc_ctx *"
-.Fn knc_accept_fd "char *service" "char *hostname" "int fd"
+.Fn knc_accept_fd "const char *service" "const char *hostname" "int fd"
 .Ss The Simple Read/Write Interface
-.Ft int
-.Fn knc_read "struct knc_ctx *ctx" "char *buf" "int len"
-.Ft int
-.Fn knc_write "struct knc_ctx *ctx" "char *buf" "int len"
+.Ft ssize_t
+.Fn knc_read "struct knc_ctx *ctx" "void *buf" "size_t len"
+.Ft ssize_t
+.Fn knc_write "struct knc_ctx *ctx" "const void *buf" "size_t len"
 .Ss The More Complex Buffer Based Interface
 .Ft int
-.Fn knc_put_buf "struct knc_ctx *ctx" "int dir" "char *" "int len"
+.Fn knc_put_buf "struct knc_ctx *ctx" "int dir" "const void *" "int len"
 .Ft int
-.Fn knc_get_ibuf "struct knc_ctx *ctx" "int dir" "char **buf" "int len"
+.Fn knc_get_ibuf "struct knc_ctx *ctx" "int dir" "void **buf" "int len"
 .Ft int
-.Fn knc_get_obuf "struct knc_ctx *ctx" "int dir" "char **buf" "int len"
+.Fn knc_get_obuf "struct knc_ctx *ctx" "int dir" "void **buf" "int len"
 .Ft int
-.Fn knc_get_obufv "struct knc_ctx *ctx" "struct iovec **vec" "int *count"
+.Fn knc_get_obufv "struct knc_ctx *ctx" "struct iovec **vec" "size_t *count"
 .Ft int
 .Fn knc_drain_buf "struct knc_ctx *ctx" "int dir" "int len"
 .Ft int
@@ -69,7 +69,7 @@
 .Ss Error handling
 .Ft int
 .Fn knc_error "struct knc_ctx *ctx"
-.Ft "char *"
+.Ft "const char *"
 .Fn knc_errstr "struct knc_ctx *ctx"
 .Ss Garbage Collection
 .Ft void

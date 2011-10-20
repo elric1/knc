@@ -159,7 +159,8 @@ knc_loop(struct knc_ctx *ctx)
 		 */
 
 		if (knc_avail_buf(ctx, KNC_DIR_SEND) < UNIT_BUFSIZ) {
-			ret = knc_get_ibuf(ctx, KNC_DIR_SEND, &buf, 8192);
+			ret = knc_get_ibuf(ctx, KNC_DIR_SEND,
+			    (void **)&buf, 8192);
 			if (ret == -1)
 				fprintf(stderr, "%d: ret == -1 for sending\n",
 				    getpid());
@@ -173,7 +174,8 @@ knc_loop(struct knc_ctx *ctx)
 
 		if (knc_avail_buf(ctx, KNC_DIR_RECV) > 0) {
 
-			ret = knc_get_obuf(ctx, KNC_DIR_RECV, &buf, 8192);
+			ret = knc_get_obuf(ctx, KNC_DIR_RECV,
+			    (void **)&buf, 8192);
 			if (ret < 0)
 				fprintf(stderr, "%d: ret == %d for receiving\n",
 				    getpid(), ret);

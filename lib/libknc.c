@@ -52,15 +52,15 @@
 #include "libknc.h"
 
 struct knc_stream_bit {
-	char			*buf;
+	void			*buf;
 	gss_buffer_desc		 gssbuf;
 	struct knc_stream_bit	*next;
-	int			 len;
-	int			 allocated;
+	size_t			 len;
+	size_t			 allocated;
 };
 
 struct knc_stream_gc {
-	char			*ptr;
+	void			*ptr;
 	struct knc_stream_gc	*next;
 };
 
@@ -69,8 +69,8 @@ struct knc_stream {
 	struct knc_stream_bit	*cur;
 	struct knc_stream_bit	*tail;
 	struct knc_stream_gc	*garbage;
-	int			 bufpos;
-	int			 avail;
+	size_t			 bufpos;
+	size_t			 avail;
 };
 
 struct knc_ctx {
@@ -133,33 +133,34 @@ static int debug = 0;
 
 /* Local function declarations */
 
-static void	debug_printf(const char *, ...);
+static void	debug_printf(const char *, ...)
+    __attribute__((__format__(__printf__, 1, 2)));
 
 static void	knc_syscall_error(struct knc_ctx *, int);
 static void	knc_gss_error(struct knc_ctx *, int, int, const char *);
 
-static struct knc_stream_bit	*knc_alloc_stream_bit(int);
-static int			 knc_append_stream_bit(struct knc_stream *,
+static struct knc_stream_bit	*knc_alloc_stream_bit(size_t);
+static size_t			 knc_append_stream_bit(struct knc_stream *,
 				    struct knc_stream_bit *);
 
-static int	knc_put_stream(struct knc_stream *, char *, int);
+static int	knc_put_stream(struct knc_stream *, const void *, size_t);
 static int	knc_put_stream_gssbuf(struct knc_stream *, gss_buffer_t);
-static int	knc_get_istream(struct knc_stream *, char **, int);
-static int	knc_get_ostream(struct knc_stream *, char **, int);
-static int	knc_get_ostreamv(struct knc_stream *, struct iovec **, int *);
+static int	knc_get_istream(struct knc_stream *, void **, size_t);
+static ssize_t	knc_get_ostream(struct knc_stream *, void **, size_t);
+static ssize_t	knc_get_ostreamv(struct knc_stream *, struct iovec **, size_t *);
 static int	knc_stream_put_trash(struct knc_stream *, void *);
-static int	knc_get_ostream_contig(struct knc_stream *, char **, int);
-static int	knc_stream_drain(struct knc_stream *, int);
-static int	knc_stream_fill(struct knc_stream *, int);
-static int	knc_stream_avail(struct knc_stream *);
+static ssize_t	knc_get_ostream_contig(struct knc_stream *, void **, size_t);
+static ssize_t	knc_stream_drain(struct knc_stream *, size_t);
+static ssize_t	knc_stream_fill(struct knc_stream *, size_t);
+static size_t	knc_stream_avail(struct knc_stream *);
 static void	knc_stream_garbage_collect(struct knc_stream *);
 
-static int	read_packet(struct knc_stream *, char **b);
-static int	put_packet(struct knc_stream *, gss_buffer_t);
+static ssize_t	read_packet(struct knc_stream *, void **b);
+static ssize_t	put_packet(struct knc_stream *, gss_buffer_t);
 
-static int	knc_state_init(struct knc_ctx *, char *, int);
-static int	knc_state_accept(struct knc_ctx *, char *, int);
-static int	knc_state_session(struct knc_ctx *, char *, int);
+static int	knc_state_init(struct knc_ctx *, void *, size_t);
+static int	knc_state_accept(struct knc_ctx *, void *, size_t);
+static int	knc_state_session(struct knc_ctx *, void *, size_t);
 static int	knc_state_process_in(struct knc_ctx *);
 static int	knc_state_process_out(struct knc_ctx *);
 static int	knc_state_process(struct knc_ctx *);
@@ -181,13 +182,10 @@ debug_printf(const char *fmt, ...)
 }
 
 struct knc_stream *
-knc_init_stream()
+knc_init_stream(void)
 {
-	struct knc_stream	*s;
 
-	s = malloc(sizeof(*s));
-	memset(s, 0x0, sizeof(*s));
-	return s;
+	return calloc(1, sizeof(struct knc_stream));
 }
 
 static void
@@ -202,7 +200,7 @@ knc_destroy_stream(struct knc_stream *s)
 	free(s);
 }
 
-static int
+static size_t
 knc_append_stream_bit(struct knc_stream *s, struct knc_stream_bit *b)
 {
 
@@ -224,18 +222,16 @@ knc_append_stream_bit(struct knc_stream *s, struct knc_stream_bit *b)
 }
 
 static struct knc_stream_bit *
-knc_alloc_stream_bit(int len)
+knc_alloc_stream_bit(size_t len)
 {
 	struct knc_stream_bit	*bit;
 	char			*tmpbuf;
 
-	bit = malloc(sizeof(*bit));
+	bit = calloc(1, sizeof(*bit));
 	if (!bit)
 		return NULL;
 
-	memset(bit, 0x0, sizeof(*bit));
-
-	tmpbuf = malloc(len);
+	tmpbuf = calloc(len, 1);
 	if (!tmpbuf) {
 		free(bit);
 		return NULL;
@@ -249,7 +245,7 @@ knc_alloc_stream_bit(int len)
 }
 
 static int
-knc_put_stream(struct knc_stream *s, char *buf, int len)
+knc_put_stream(struct knc_stream *s, const void *buf, size_t len)
 {
 	struct knc_stream_bit	*bit;
 
@@ -268,11 +264,9 @@ knc_put_stream_gssbuf(struct knc_stream *s, gss_buffer_t buf)
 {
 	struct knc_stream_bit	*bit;
 
-	bit = malloc(sizeof(*bit));
+	bit = calloc(1, sizeof(*bit));
 	if (!bit)
 		return -1;
-
-	memset(bit, 0x0, sizeof(*bit));
 
 	bit->buf           = buf->value;
 	bit->len           = buf->length;
@@ -289,7 +283,7 @@ knc_put_stream_gssbuf(struct knc_stream *s, gss_buffer_t buf)
 }
 
 static int
-knc_get_istream(struct knc_stream *s, char **buf, int len)
+knc_get_istream(struct knc_stream *s, void **buf, size_t len)
 {
 	struct knc_stream_bit	*tmp;
 
@@ -315,8 +309,8 @@ knc_get_istream(struct knc_stream *s, char **buf, int len)
  * for writing.
  */
 
-static int
-knc_get_ostream(struct knc_stream *s, char **buf, int len)
+static ssize_t
+knc_get_ostream(struct knc_stream *s, void **buf, size_t len)
 {
 
 	if (!s || !s->cur) {
@@ -328,18 +322,19 @@ knc_get_ostream(struct knc_stream *s, char **buf, int len)
 
 	/* XXXrcd: hmmm, what if bufpos moves us beyond the stream? */
 
-	*buf = s->cur->buf + s->bufpos;
-	len = MIN(len, s->cur->len - s->bufpos);
+	*buf = (char *)s->cur->buf + s->bufpos;
+	if (s->cur->len >= s->bufpos)
+		len = MIN(len, s->cur->len - s->bufpos);
 
 	return len;
 }
 
-static int
-knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
+static ssize_t
+knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, size_t *count)
 {
 	struct knc_stream_bit	*cur;
-	int			 i;
-	int			 len;
+	size_t			 i;
+	size_t			 len;
 
 	if (!s || !s->cur) {
 		/* XXXrcd: better errors... */
@@ -363,22 +358,22 @@ knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 	len = 0;
 	cur = s->cur;
 
-	(*vec)[i  ].iov_base = cur->buf + s->bufpos;
+	(*vec)[i  ].iov_base = (char *)cur->buf + s->bufpos;
 	(*vec)[i++].iov_len  = cur->len - s->bufpos;
 	len += cur->len - s->bufpos;
-	DEBUG(("creating iovec element of length %d, total %d\n",
+	DEBUG(("creating iovec element of length %zu, total %zu\n",
 	    len, len));
 
 	for (cur = cur->next; cur; cur = cur->next) {
 		(*vec)[i  ].iov_base = cur->buf;
 		(*vec)[i++].iov_len  = cur->len;
 		len += cur->len;
-		DEBUG(("creating iovec element of length %d, "
-		    "total %d\n", cur->len, len));
+		DEBUG(("creating iovec element of length %zu, "
+		    "total %zu\n", cur->len, len));
 	}
 
 	*count = i;
-	knc_stream_put_trash(s, (void *) *vec);
+	knc_stream_put_trash(s, *vec);
 
 	return len;
 }
@@ -390,12 +385,12 @@ knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
  * the returned buffer.
  */
 
-static int
-knc_get_ostream_contig(struct knc_stream *s, char **buf, int len)
+static ssize_t
+knc_get_ostream_contig(struct knc_stream *s, void **buf, size_t len)
 {
 	struct knc_stream_bit	*cur;
-	int			 retlen;
-	int			 tmplen;
+	size_t			 retlen;
+	size_t			 tmplen;
 
 	/* We only bother if we're going to return the requested amount. */
 
@@ -411,19 +406,20 @@ knc_get_ostream_contig(struct knc_stream *s, char **buf, int len)
 	/* Okay, we're going to have to allocate here. */
 
 	*buf = malloc(len);
-	/* XXXrcd: memory errors. */
-	knc_stream_put_trash(s, (void *) *buf);
+	if (*buf == NULL)
+		return -1;
+	knc_stream_put_trash(s, *buf);
 
 	retlen = 0;
 	cur = s->cur;
 
 	retlen = cur->len - s->bufpos;
-	memcpy(*buf, cur->buf + s->bufpos, retlen);
+	memcpy(*buf, (char *)cur->buf + s->bufpos, retlen);
 	cur = cur->next;
 
 	while (retlen < len) {
 		tmplen = MIN(len - retlen, cur->len);
-		memcpy(*buf + retlen, cur->buf, tmplen);
+		memcpy((char *)*buf + retlen, cur->buf, tmplen);
 
 		cur = cur->next;
 		retlen += tmplen;
@@ -432,17 +428,18 @@ knc_get_ostream_contig(struct knc_stream *s, char **buf, int len)
 	return retlen;
 }
 
-static int
-knc_stream_drain(struct knc_stream *s, int len)
+static ssize_t
+knc_stream_drain(struct knc_stream *s, size_t len)
 {
 
-	DEBUG(("knc_stream_drain called with %d\n", len));
+	DEBUG(("knc_stream_drain called with %zu\n", len));
 
 	if (!s->cur)
 		return -1;
 
 	/* XXXrcd: sanity */
-	DEBUG(("knc_stream_drain start: s->cur = %p\n", s->cur));
+	DEBUG(("knc_stream_drain(%zu) start: s->cur=%p, avail=%zu bufpos=%zu\n",
+	    len, s->cur, s->avail, s->bufpos));
 
 	s->avail  -= len;
 	s->bufpos += len;
@@ -463,8 +460,8 @@ knc_stream_drain(struct knc_stream *s, int len)
 	return len;
 }
 
-static int
-knc_stream_fill(struct knc_stream *s, int len)
+static ssize_t
+knc_stream_fill(struct knc_stream *s, size_t len)
 {
 
 	/* XXXrcd: perform sanity */
@@ -483,7 +480,7 @@ knc_stream_fill(struct knc_stream *s, int len)
 	return len;
 }
 
-static int
+static size_t
 knc_stream_avail(struct knc_stream *s)
 {
 
@@ -551,11 +548,11 @@ knc_stream_garbage_collect(struct knc_stream *s)
 	s->garbage = NULL;
 }
 
-static int
-read_packet(struct knc_stream *s, char **buf)
+static ssize_t
+read_packet(struct knc_stream *s, void **buf)
 {
-	int	 len;
-	char	*tmp;
+	uint32_t len;
+	void	*tmp;
 
 	DEBUG(("read_packet: enter\n"));
 	if (knc_stream_avail(s) < 4)
@@ -563,17 +560,17 @@ read_packet(struct knc_stream *s, char **buf)
 
 	DEBUG(("read_packet: 4 bytes are available\n"));
 	knc_get_ostream_contig(s, &tmp, 4);
-	len = ntohl(*((int *)tmp));
+	len = ntohl(*((uint32_t *)tmp));
 
-	DEBUG(("read_packet: got len = %d\n", len));
-	if (knc_stream_avail(s) < len + 4)
+	DEBUG(("read_packet: got len = %u\n", len));
+	if (knc_stream_avail(s) < (size_t)len + 4)
 		return -1;
 
 	knc_stream_drain(s, 4);
 
 	/* Okay, now we know that we've got an entire packet */
 
-	DEBUG(("read_packet: getting %d bytes\n", len));
+	DEBUG(("read_packet: getting %u bytes\n", len));
 	len = knc_get_ostream_contig(s, buf, len);
 	knc_stream_drain(s, len);
 
@@ -582,13 +579,13 @@ read_packet(struct knc_stream *s, char **buf)
 	return len;
 }
 
-static int
+static ssize_t
 put_packet(struct knc_stream *s, gss_buffer_t buf)
 {
-	u_int32_t	netlen;
+	uint32_t	netlen;
 
-	netlen = htonl(buf->length);
-	knc_put_stream(s, (char *)&netlen, 4);
+	netlen = htonl((uint32_t)buf->length);
+	knc_put_stream(s, &netlen, 4);
 	knc_put_stream_gssbuf(s, buf);
 
 	/* XXXrcd: useful to return this?  What about errors? */
@@ -596,13 +593,10 @@ put_packet(struct knc_stream *s, gss_buffer_t buf)
 }
 
 struct knc_ctx *
-knc_ctx_init()
+knc_ctx_init(void)
 {
-	struct knc_ctx	*ctx;
 
-	ctx = malloc(sizeof(*ctx));
-	memset(ctx, 0x0, sizeof(*ctx));
-	return ctx;
+	return calloc(1, sizeof(struct knc_ctx));
 }
 
 void
@@ -658,7 +652,7 @@ knc_errstr(struct knc_ctx *ctx)
 }
 
 struct knc_ctx *
-knc_accept(char *service, char *hostname)
+knc_accept(const char *service, const char *hostname)
 {
 	struct knc_ctx	*ctx;
 
@@ -673,7 +667,7 @@ knc_accept(char *service, char *hostname)
 }
 
 struct knc_ctx *
-knc_accept_fd(char *service, char *hostname, int fd)
+knc_accept_fd(const char *service, const char *hostname, int fd)
 {
 	struct knc_ctx	*ctx;
 
@@ -690,7 +684,7 @@ knc_accept_fd(char *service, char *hostname, int fd)
 }
 
 static int
-knc_state_init(struct knc_ctx *ctx, char *buf, int len)
+knc_state_init(struct knc_ctx *ctx, void *buf, size_t len)
 {
 	gss_buffer_desc	in;
 	gss_buffer_desc	out;
@@ -723,7 +717,7 @@ knc_state_init(struct knc_ctx *ctx, char *buf, int len)
 }
 
 static int
-knc_state_accept(struct knc_ctx *ctx, char *buf, int len)
+knc_state_accept(struct knc_ctx *ctx, void *buf, size_t len)
 {
 	gss_buffer_desc	 in;
 	gss_buffer_desc	 out;
@@ -770,7 +764,7 @@ knc_state_accept(struct knc_ctx *ctx, char *buf, int len)
 }
 
 static int
-knc_state_session(struct knc_ctx *ctx, char *buf, int len)
+knc_state_session(struct knc_ctx *ctx, void *buf, size_t len)
 {
 	gss_buffer_desc	in;
 	gss_buffer_desc	out;
@@ -796,8 +790,8 @@ knc_state_session(struct knc_ctx *ctx, char *buf, int len)
 static int
 knc_state_process_in(struct knc_ctx *ctx)
 {
-	char	*buf;
-	int	 len;
+	void	*buf;
+	ssize_t	 len;
 	int	 ret;
 
 	DEBUG(("knc_state_process_in: enter\n"));
@@ -814,7 +808,7 @@ knc_state_process_in(struct knc_ctx *ctx)
 	for (;;) {
 		len = read_packet(&ctx->raw_recv, &buf);
 
-		DEBUG(("read_packet returned %d\n", len));
+		DEBUG(("read_packet returned %zd\n", len));
 
 		if (len < 1)	/* XXXrcd: How about 0? */
 			return 0;
@@ -848,8 +842,8 @@ knc_state_process_out(struct knc_ctx *ctx)
 	gss_buffer_desc	 out;
 	OM_uint32	 maj;
 	OM_uint32	 min;
-	int		 len;
-	char		*buf;
+	ssize_t		 len;
+	void		*buf;
 
 	DEBUG(("knc_state_process_out: enter\n"));
 
@@ -878,7 +872,7 @@ knc_state_process_out(struct knc_ctx *ctx)
 		}
 
 		in.length = len;
-		in.value  = (void *)buf;
+		in.value  = buf;
 		maj = gss_wrap(&min, ctx->gssctx, 1, GSS_C_QOP_DEFAULT,
 		    &in, NULL, &out);
 
@@ -949,28 +943,28 @@ knc_find_buf(struct knc_ctx *ctx, int side, int dir)
 }
 
 int
-knc_put_buf(struct knc_ctx *ctx, int dir, char *buf, int len)
+knc_put_buf(struct knc_ctx *ctx, int dir, const void *buf, size_t len)
 {
 
 	return knc_put_stream(knc_find_buf(ctx, KNC_SIDE_IN, dir), buf, len);
 }
 
 int
-knc_get_ibuf(struct knc_ctx *ctx, int dir, char **buf, int len)
+knc_get_ibuf(struct knc_ctx *ctx, int dir, void **buf, size_t len)
 {
 
 	return knc_get_istream(knc_find_buf(ctx, KNC_SIDE_IN, dir) , buf, len);
 }
 
 int
-knc_get_obuf(struct knc_ctx *ctx, int dir, char **buf, int len)
+knc_get_obuf(struct knc_ctx *ctx, int dir, void **buf, size_t len)
 {
 
 	return knc_get_ostream(knc_find_buf(ctx, KNC_SIDE_OUT, dir) , buf, len);
 }
 
 int
-knc_get_obufv(struct knc_ctx *ctx, int dir, struct iovec **vec, int *count)
+knc_get_obufv(struct knc_ctx *ctx, int dir, struct iovec **vec, size_t *count)
 {
 
 	return knc_get_ostreamv(knc_find_buf(ctx,KNC_SIDE_OUT,dir), vec, count);
@@ -1005,7 +999,7 @@ knc_avail_buf(struct knc_ctx *ctx, int dir)
 }
 
 struct knc_ctx *
-knc_initiate(char *service, char *hostname)
+knc_initiate(const char *service, const char *hostname)
 {
 	struct knc_ctx	*ctx;
 	gss_buffer_desc	 name;
@@ -1076,6 +1070,8 @@ connect_host(const char *domain, const char *service)
 		s = -1;
 		DEBUG(("connect: %s", strerror(errno)));
 	}
+
+	freeaddrinfo(res0);
 	return s;
 }
 
@@ -1109,7 +1105,7 @@ knc_get_local_fd(struct knc_ctx *ctx)
 }
 
 struct knc_ctx *
-knc_init_fd(char *service, char *hostname, int fd)
+knc_init_fd(const char *service, const char *hostname, int fd)
 {
 	struct knc_ctx	*ctx;
 
@@ -1135,7 +1131,7 @@ knc_set_local_fd(struct knc_ctx *ctx, int fd)
 }
 
 struct knc_ctx *
-knc_connect(char *service, char *hostname, char *port)
+knc_connect(const char *service, const char *hostname, const char *port)
 {
 	int		 fd;
 
@@ -1154,38 +1150,39 @@ knc_connect(char *service, char *hostname, char *port)
  */
 
 struct knc_ctx *
-knc_connect_parse(char *hostservice, int opts)
+knc_connect_parse(const char *hostservice, int opts)
 {
 	char	*host;
 	char	*service;
 	char	*port;
 
-	service = hostservice;
+	service = strdup(hostservice);
+	if (!service)
+		return NULL;
+
 	host = strchr(service, '@');
-	if (!host) {
-		/* XXXrcd: store error, don't print it */
-		fprintf(stderr, "Parse failure for %s\n", hostservice);
-		return NULL;
-	}
-
+	if (!host)
+		goto out;
 	*host++ = '\0';
-	port = strchr(host, ':');
-	if (!port) {
-		/* XXXrcd: store error, don't print it */
-		fprintf(stderr, "Parse failure for %s\n", hostservice);
-		return NULL;
-	}
 
+	port = strchr(host, ':');
+	if (!port)
+		goto out;
 	*port++ = '\0';
 
+	free(service);
 	return knc_connect(service, host, port);
+out:
+	errno = EINVAL;
+	free(service);
+	return NULL;
 }
 
 int
 knc_fill(struct knc_ctx *ctx, int dir)
 {
-	int	 ret;
-	char	*tmpbuf;
+	ssize_t	 ret;
+	void	*tmpbuf;
 
 	/* XXXrcd: deal properly with EOF */
 	if (ctx->net_fd == -1)
@@ -1194,7 +1191,7 @@ knc_fill(struct knc_ctx *ctx, int dir)
 	/* XXXrcd: hardcoded constant */
 	ret = knc_get_ibuf(ctx, dir, &tmpbuf, 128 * 1024);
 
-	DEBUG(("knc_fill: about to read %d bytes.\n", ret));
+	DEBUG(("knc_fill: about to read %zd bytes.\n", ret));
 
 	if (dir == KNC_DIR_RECV)
 		ret = (ctx->netread)(ctx->net_fd, tmpbuf, ret);
@@ -1237,18 +1234,18 @@ knc_fill(struct knc_ctx *ctx, int dir)
 	}
 
 	if (ret > 0) {
-		DEBUG(("Read %d bytes\n", ret));
+		DEBUG(("Read %zd bytes\n", ret));
 		knc_fill_buf(ctx, dir, ret);
 	}
 
 	return knc_state_process(ctx);
 }
 
-int
-knc_read(struct knc_ctx *ctx, char *buf, int len)
+ssize_t
+knc_read(struct knc_ctx *ctx, void *buf, size_t len)
 {
-	int	 ret;
-	char	*tmpbuf;
+	ssize_t	 ret;
+	void	*tmpbuf;
 
 	DEBUG(("knc_read: about to read.\n"));
 
@@ -1299,15 +1296,15 @@ knc_flush(struct knc_ctx *ctx, int dir)
 int
 knc_flush(struct knc_ctx *ctx, int dir)
 {
-	int		 len;
-	char		*buf;
+	ssize_t		 len;
+	void		*buf;
 
 //	for (;;) {
 		len = knc_get_obuf(ctx, KNC_DIR_SEND, &buf, 16384);
 		if (len <= 0)
 			return 0;
 //			break;
-		DEBUG(("knc_flush: about to write %d bytes.\n", len));
+		DEBUG(("knc_flush: about to write %zu bytes.\n", len));
 
 #if 0
 		vec[0].iov_base = buf;
@@ -1346,7 +1343,7 @@ knc_flush(struct knc_ctx *ctx, int dir)
 			return -1;
 		}
 
-		DEBUG(("knc_flush: wrote %d bytes.\n", len));
+		DEBUG(("knc_flush: wrote %zd bytes.\n", len));
 		knc_drain_buf(ctx, KNC_DIR_SEND, len);
 //	}
 
@@ -1356,10 +1353,10 @@ knc_flush(struct knc_ctx *ctx, int dir)
 }
 #endif
 
-int
-knc_write(struct knc_ctx *ctx, char *buf, int len)
+ssize_t
+knc_write(struct knc_ctx *ctx, const void *buf, size_t len)
 {
-	int	ret;
+	ssize_t	ret;
 
 	ret = knc_put_buf(ctx, KNC_DIR_SEND, buf, len);
 	knc_state_process(ctx);

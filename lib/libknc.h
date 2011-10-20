@@ -36,12 +36,12 @@ struct knc_ctx;
  */
 
 struct knc_ctx		*knc_ctx_init(void);
-struct knc_ctx		*knc_initiate(char *, char *);
-struct knc_ctx		*knc_init_fd(char *, char *, int);
-struct knc_ctx		*knc_connect(char *, char *, char *);
-struct knc_ctx		*knc_connect_parse(char *, int);
-struct knc_ctx		*knc_accept(char *, char *);
-struct knc_ctx		*knc_accept_fd(char *, char *, int);
+struct knc_ctx		*knc_initiate(const char *, const char *);
+struct knc_ctx		*knc_init_fd(const char *, const char *, int);
+struct knc_ctx		*knc_connect(const char *, const char *, const char *);
+struct knc_ctx		*knc_connect_parse(const char *, int);
+struct knc_ctx		*knc_accept(const char *, const char *);
+struct knc_ctx		*knc_accept_fd(const char *, const char *, int);
 void			 knc_ctx_close(struct knc_ctx *);
 
 int			 knc_get_fd(struct knc_ctx *);
@@ -61,8 +61,8 @@ const char		*knc_errstr(struct knc_ctx *);
 void	knc_set_local_fd(struct knc_ctx *, int);
 int	knc_get_local_fd(struct knc_ctx *);
 int	knc_get_net_fd(struct knc_ctx *);
-int	knc_read(struct knc_ctx *, char *, int);
-int	knc_write(struct knc_ctx *, char *, int);
+ssize_t	knc_read(struct knc_ctx *, void *, size_t);
+ssize_t	knc_write(struct knc_ctx *, const void *, size_t);
 int	knc_fill(struct knc_ctx *, int);
 int	knc_flush(struct knc_ctx *, int);
 void	knc_garbage_collect(struct knc_ctx *);
@@ -75,10 +75,10 @@ void	knc_garbage_collect(struct knc_ctx *);
 #define KNC_DIR_RECV	0x1
 #define KNC_DIR_SEND	0x2
 
-int	knc_put_buf(struct knc_ctx *, int, char *,  int);
-int	knc_get_ibuf(struct knc_ctx *, int, char **, int);
-int	knc_get_obuf(struct knc_ctx *, int, char **, int);
-int	knc_get_obufv(struct knc_ctx *, int dir, struct iovec **, int *);
+int	knc_put_buf(struct knc_ctx *, int, const void *,  size_t);
+int	knc_get_ibuf(struct knc_ctx *, int, void **, size_t);
+int	knc_get_obuf(struct knc_ctx *, int, void **, size_t);
+int	knc_get_obufv(struct knc_ctx *, int dir, struct iovec **, size_t *);
 int	knc_drain_buf(struct knc_ctx *, int, int);
 int	knc_fill_buf(struct knc_ctx *, int, int);
 int	knc_avail_buf(struct knc_ctx *, int);
