@@ -945,14 +945,14 @@ int
 knc_get_ibuf(struct knc_ctx *ctx, int dir, void **buf, size_t len)
 {
 
-	return knc_get_istream(knc_find_buf(ctx, KNC_SIDE_IN, dir) , buf, len);
+	return knc_get_istream(knc_find_buf(ctx, KNC_SIDE_IN, dir), buf, len);
 }
 
 int
 knc_get_obuf(struct knc_ctx *ctx, int dir, void **buf, size_t len)
 {
 
-	return knc_get_ostream(knc_find_buf(ctx, KNC_SIDE_OUT, dir) , buf, len);
+	return knc_get_ostream(knc_find_buf(ctx, KNC_SIDE_OUT, dir), buf, len);
 }
 
 int
