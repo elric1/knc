@@ -1144,30 +1144,35 @@ knc_connect(const char *service, const char *hostname, const char *port)
 struct knc_ctx *
 knc_connect_parse(const char *hostservice, int opts)
 {
-	char	*host;
-	char	*service;
-	char	*port;
+	struct knc_ctx	*ctx = NULL;
+	char		*host;
+	char		*service;
+	char		*port;
 
 	service = strdup(hostservice);
-	if (!service)
+	if (!service) {
+		errno = ENOMEM;
 		return NULL;
+	}
 
 	host = strchr(service, '@');
-	if (!host)
+	if (!host) {
+		errno = EINVAL;
 		goto out;
+	}
 	*host++ = '\0';
 
 	port = strchr(host, ':');
-	if (!port)
+	if (!port) {
+		errno = EINVAL;
 		goto out;
+	}
 	*port++ = '\0';
 
-	free(service);
-	return knc_connect(service, host, port);
+	ctx = knc_connect(service, host, port);
 out:
-	errno = EINVAL;
 	free(service);
-	return NULL;
+	return ctx;
 }
 
 int
