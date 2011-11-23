@@ -1,0 +1,15 @@
+Source: knc
+Section: unknown
+Priority: extra
+Maintainer: elric <elric@imrryr.org>
+Build-Depends: debhelper (>= 7), dh-autoreconf
+Standards-Version: 3.8.3
+Homepage: http://oskt.secure-endpoints.com/knc
+
+Package: knc
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Kerberised NetCat
+     knc provides an 8-bit clean, mutually authenticated tunnel between
+     two endpoints.  The same executable provides both client and server
+     functionality.
