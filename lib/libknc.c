@@ -1392,7 +1392,7 @@ knc_errstring(char **str, int min_stat)
 
 		/* GSSAPI strings are not NUL terminated */
 		if ((statstr = (char *)malloc(status.length + 1)) == NULL) {
-			DEBUG(("unable to malloc status string of length %ld",
+			DEBUG(("unable to malloc status string of length %zu",
 			    status.length));
 			gss_release_buffer(&new_stat, &status);
 			free(statstr);
