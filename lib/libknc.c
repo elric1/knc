@@ -824,7 +824,7 @@ knc_state_process_in(struct knc_ctx *ctx)
 
 	}
 
-	return 0;
+	return ret;
 }
 
 static int
