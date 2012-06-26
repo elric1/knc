@@ -361,7 +361,7 @@ read_packet(int fd, gss_buffer_t buf)
 		ret = read(fd, &len_buf[len_buf_pos], 4 - len_buf_pos);
 
 		if (ret == -1) {
-			if ((errno == EINTR) || (errno == EAGAIN))
+			if (errno == EINTR || errno == EAGAIN)
 				return -2;
 
 			LOG(LOG_ERR, ("%s", strerror(errno)));
@@ -410,7 +410,7 @@ read_packet(int fd, gss_buffer_t buf)
 
 	ret = read(fd, tmpbuf + tmpbuf_pos, len - tmpbuf_pos);
 	if (ret == -1) {
-		if ((errno == EINTR) || (errno == EAGAIN))
+		if (errno == EINTR || errno == EAGAIN)
 			return -2;
 		
 		LOG(LOG_ERR, ("%s", strerror(errno)));
@@ -470,7 +470,7 @@ writen(int fd, const void *buf, ssize_t len) {
 		nwritten = write(fd, buffer, len);
 
 		if (nwritten < 0) {
-			if ((errno == EINTR) || (errno == EAGAIN))
+			if (errno == EINTR || errno == EAGAIN)
 				continue;
 			else {
 				LOG_ERRNO(LOG_ERR, ("write failed"));
