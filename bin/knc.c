@@ -120,7 +120,7 @@ log_reap_status(pid_t pid, int status) {
 		LOG(LOG_NOTICE, ("child pid %d exited with status %d",
 				 (int)pid, WEXITSTATUS(status)));
 }
-	
+
 int
 reap() {
 	pid_t	pid;
@@ -578,7 +578,7 @@ do_bind_addr(const char *s, struct sockaddr_in *sa) {
 			      " effect", s));
 		return 0;
 	}
-	
+
 	return 0;
 }
 
@@ -688,7 +688,7 @@ move_local_to_network_buffer(work_t *work) {
 			      " data"));
 		return -1;
 	}
-	
+
 	work->network_buffer.in_len = read(work->local_in,
 					   work->network_buffer.in,
 					   sizeof(work->network_buffer.in));
@@ -698,7 +698,7 @@ move_local_to_network_buffer(work_t *work) {
 	} else if (work->network_buffer.in_len < 0) {
 		if (errno == ECONNRESET)
 			return 0; /* Treat as EOF */
-		
+
 		LOG_ERRNO(LOG_ERR, ("local read failed"));
 		return -1;
 	}
@@ -745,7 +745,7 @@ write_local_buffer(work_t *work) {
 	len = write(work->local_out,
 		    &(work->local_buffer.out[work->local_buffer.out_pos]),
 		    work->local_buffer.out_len);
-	
+
 	if (len < 0 && ((errno != EINTR) && (errno != EAGAIN))) {
 		if (errno == EPIPE) {
 			/*
@@ -851,7 +851,7 @@ write_network_buffer(work_t *work) {
 	len = write(work->network_fd,
 		    &(work->network_buffer.out[work->network_buffer.out_pos]),
 		    work->network_buffer.out_len);
-	
+
 	if (len < 0 && ((errno != EINTR) && (errno != EAGAIN))) {
 		if (errno == EPIPE) {
 			/*
@@ -944,7 +944,7 @@ move_data(work_t *work) {
 			shutdown_or_close(work->local_out, SHUT_WR);
 			++shut_nread_lwrite;
 		}
-		
+
 		if ((shut_nwrite_lread == 1) &&
 		    !work->network_buffer.in_valid &&
 		    !work->network_buffer.out_valid) {
@@ -973,7 +973,7 @@ move_data(work_t *work) {
 			LOG(LOG_NOTICE, ("child died before EOF"));
 			child_alive = 0;
 		}
-		
+
 		FD_ZERO(&rdset);
 		FD_ZERO(&wrset);
 
@@ -1060,8 +1060,8 @@ move_data(work_t *work) {
 					work->local_err = -1;
 					break;
 				default:
-                                        errbuf[mret] = 0;
-                                        LOG(LOG_ERR, ("stderr: %s", errbuf));
+					errbuf[mret] = 0;
+					LOG(LOG_ERR, ("stderr: %s", errbuf));
 				}
 			}
 
@@ -1274,9 +1274,9 @@ do_work(work_t *work, int argc, char **argv) {
 		int	keepalive = 1;
 
 		if (setsockopt(work->network_fd, SOL_SOCKET, SO_KEEPALIVE,
-		               &keepalive, sizeof(keepalive)) < 0) {
+			       &keepalive, sizeof(keepalive)) < 0) {
 			LOG_ERRNO(LOG_ERR, ("unable to set SO_KEEPALIVE on "
-			                    "network socket"));
+					    "network socket"));
 
 			/* XXXrcd: We continue on failure */
 		}
@@ -1406,7 +1406,7 @@ launch_program(work_t *work, int argc, char **argv) {
 		return 1;
 	}
 }
-	
+
 int
 fork_and_do_work(work_t *work, int listener, int argc, char **argv) {
 	pid_t pid;
@@ -1732,10 +1732,10 @@ do_client(int argc, char **argv) {
 		work.network_fd = prefs.network_fd;
 	} else {
 		fd = connect_host(hostname, argv[1]);
-	
+
 		if (fd == 1)
 			exit(1);	/* XXXrcd: is this right? */
-		
+
 		work.network_fd = fd;
 	}
 
@@ -1744,9 +1744,9 @@ do_client(int argc, char **argv) {
 		int	keepalive = 1;
 
 		if (setsockopt(work.network_fd, SOL_SOCKET, SO_KEEPALIVE,
-		               &keepalive, sizeof(keepalive)) < 0) {
+			       &keepalive, sizeof(keepalive)) < 0) {
 			LOG_ERRNO(LOG_ERR, ("unable to set SO_KEEPALIVE on "
-			                    "network socket"));
+					    "network socket"));
 
 			/* XXXrcd: We continue on failure */
 		}
@@ -1788,7 +1788,7 @@ work_init(work_t *work) {
 void
 work_free(work_t *work) {
 	FREE_NOTNULL(credentials);
-		
+
 	if (work->context != NULL)
 		gstd_close(work->context);
 
