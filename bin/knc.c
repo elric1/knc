@@ -174,6 +174,24 @@ sleep_reap() {
 	return 0;
 }
 
+void
+parse_opt(const char *prognam, const char *opt)
+{
+
+	if (!strcmp(opt, "keepalive")) {
+		prefs.so_keepalive = 1;
+		return;
+	}
+
+	if (!strcmp(opt, "no-half-close")) {
+		prefs.no_half_close = 1;
+		return;
+	}
+
+	fprintf(stderr, "option \"-o %s\" unrecognised.\n", opt);
+	usage(prognam);
+	exit(1);
+}
 
 void
 usage(const char *progname) {
@@ -228,7 +246,7 @@ main(int argc, char **argv) {
 	openlog(argv[0], LOG_PID, LOG_DAEMON);
 
 	/* process arguments */
-	while ((c = getopt(argc, argv, "linda:?fc:wM:N:P:S:T:")) != -1) {
+	while ((c = getopt(argc, argv, "linda:?fc:o:wM:N:P:S:T:")) != -1) {
 		switch (c) {
 		case 'l':
 			prefs.is_listener = 1;
@@ -262,6 +280,9 @@ main(int argc, char **argv) {
 				LOG(LOG_ERR, ("-c requires an integer\n"));
 				exit(1);
 			}
+			break;
+		case 'o':
+			parse_opt(argv[0], optarg);
 			break;
 		case 'w':
 			/* inetd wait service implies inetd and listener */
@@ -1049,6 +1070,11 @@ move_data(work_t *work) {
 					shut_nread_lwrite = 1;
 
 					network_active = 0;
+
+					if (prefs.no_half_close) {
+						shut_nwrite_lread = 1;
+						local_active = 0;
+					}
 				} else if (mret < 0)
 					return 0;
 			}
@@ -1064,6 +1090,11 @@ move_data(work_t *work) {
 					shut_nwrite_lread = 1;
 
 					local_active = 0;
+
+					if (prefs.no_half_close) {
+						shut_nread_lwrite = 1;
+						network_active = 0;
+					}
 				} else if (mret < 0)
 					return 0;
 			}
@@ -1231,6 +1262,19 @@ do_work(work_t *work, int argc, char **argv) {
 		LOG_ERRNO(LOG_ERR, ("unable to set O_NONBLOCK on network"
 				    " socket"));
 		return 0;
+	}
+
+	/* Optionally set keepalives */
+	if (prefs.so_keepalive) {
+		int	keepalive = 1;
+
+		if (setsockopt(work->network_fd, SOL_SOCKET, SO_KEEPALIVE,
+		               &keepalive, sizeof(keepalive)) < 0) {
+			LOG_ERRNO(LOG_ERR, ("unable to set SO_KEEPALIVE on "
+			                    "network socket"));
+
+			/* XXXrcd: We continue on failure */
+		}
 	}
 
 	/* Now we have credentials */
@@ -1688,6 +1732,19 @@ do_client(int argc, char **argv) {
 			exit(1);	/* XXXrcd: is this right? */
 		
 		work.network_fd = fd;
+	}
+
+	/* Optionally set keepalives */
+	if (prefs.so_keepalive) {
+		int	keepalive = 1;
+
+		if (setsockopt(work.network_fd, SOL_SOCKET, SO_KEEPALIVE,
+		               &keepalive, sizeof(keepalive)) < 0) {
+			LOG_ERRNO(LOG_ERR, ("unable to set SO_KEEPALIVE on "
+			                    "network socket"));
+
+			/* XXXrcd: We continue on failure */
+		}
 	}
 
 	work.hostname = strdup(hostname);
