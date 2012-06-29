@@ -270,7 +270,10 @@ gstd_read(void *the_tok, char *buf, int length)
 
 		maj = gss_unwrap(&min, tok->gstd_ctx, &in, &tok->gstd_inbuf,
 		    NULL, NULL);
-		GSTD_GSS_ERROR(maj, min, -1, "gss_unwrap");
+		if (maj != GSS_S_COMPLETE) {
+			gstd_error(LOG_ERR, min, "gss_unwrap");
+			return -1;
+		}
 		gss_release_buffer(&min, &in);
 		bufpos = 0;
 	}

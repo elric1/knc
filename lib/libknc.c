@@ -772,7 +772,10 @@ knc_state_session(struct knc_ctx *ctx, void *buf, size_t len)
 	maj = gss_unwrap(&min, ctx->gssctx, &in, &out, NULL, NULL);
 
 	/* XXXrcd: better error handling... */
-	KNC_GSS_ERROR(ctx, maj, min, -1, "gss_unwrap");
+	if (maj != GSS_S_COMPLETE) {
+		knc_gss_error(ctx, maj, min, "gss_unwrap");
+		return -1;
+	}
 
 	knc_put_stream_gssbuf(&ctx->cooked_recv, &out);
 
