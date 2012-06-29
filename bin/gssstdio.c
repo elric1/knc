@@ -142,12 +142,12 @@ again:
 	    &in, GSS_C_NO_CHANNEL_BINDINGS, &client, NULL, &out, NULL,
 	    NULL, NULL);
 
-	GSTD_GSS_ERROR(maj, min, NULL, "gss_accept_sec_context");
-
 	if (out.length && write_packet(fd, &out)) {
 		gss_release_buffer(&min, &out);
 		return NULL;
 	}
+
+	GSTD_GSS_ERROR(maj, min, NULL, "gss_accept_sec_context");
 
 	if (maj & GSS_S_CONTINUE_NEEDED)
 		goto again;
@@ -210,10 +210,10 @@ again:
 	    GSS_C_NO_OID, GSS_C_MUTUAL_FLAG | GSS_C_SEQUENCE_FLAG, 0,
 	    GSS_C_NO_CHANNEL_BINDINGS, &in, NULL, &out, NULL, NULL);
 
-	GSTD_GSS_ERROR(maj, min, NULL, "gss_init_sec_context");
-
 	if (out.length && write_packet(fd, &out))
 		return NULL;
+
+	GSTD_GSS_ERROR(maj, min, NULL, "gss_init_sec_context");
 
 	if (GSS_ERROR(maj) && ctx != GSS_C_NO_CONTEXT) {
 		gss_delete_sec_context(&min, &ctx, GSS_C_NO_BUFFER);

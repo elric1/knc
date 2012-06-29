@@ -694,13 +694,13 @@ knc_state_init(struct knc_ctx *ctx, void *buf, size_t len)
 	    GSS_C_MUTUAL_FLAG | GSS_C_SEQUENCE_FLAG, 0,
 	    GSS_C_NO_CHANNEL_BINDINGS, &in, NULL, &out, NULL, NULL);
 
-	/* XXXrcd: better error handling... */
-	KNC_GSS_ERROR(ctx, maj, min, -1, "gss_init_sec_context");
-
 	if (out.length > 0) {
 		/* XXXrcd: memory management? */
 		put_packet(&ctx->cooked_send, &out);
 	}
+
+	/* XXXrcd: better error handling... */
+	KNC_GSS_ERROR(ctx, maj, min, -1, "gss_init_sec_context");
 
 	if (!(maj & GSS_S_CONTINUE_NEEDED))
 		ctx->state = STATE_SESSION;
@@ -732,9 +732,6 @@ knc_state_accept(struct knc_ctx *ctx, void *buf, size_t len)
 	    &in, GSS_C_NO_CHANNEL_BINDINGS, &ctx->client, NULL, &out, NULL,
 	    NULL, NULL);
 
-	/* XXXrcd: better error handling... */
-	KNC_GSS_ERROR(ctx, maj, min, -1, "gss_accept_sec_context");
-
 	if (out.length) {
 		/*
 		 * XXXrcd: cheesy, knc will later free out.value which is
@@ -746,6 +743,9 @@ knc_state_accept(struct knc_ctx *ctx, void *buf, size_t len)
 		put_packet(&ctx->cooked_send, &out);
 		/* XXXrcd: ERRORS?!? */
 	}
+
+	/* XXXrcd: better error handling... */
+	KNC_GSS_ERROR(ctx, maj, min, -1, "gss_accept_sec_context");
 
 	if (!(maj & GSS_S_CONTINUE_NEEDED))
 		ctx->state = STATE_SESSION;
