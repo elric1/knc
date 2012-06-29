@@ -190,13 +190,7 @@ gstd_initiate(const char *hostname, const char *service, const char *princ,
 	} else {
 		name.value = (char *) princ;
 		name.length = strlen(princ);
-#if 0
-#if HAVE_DECL_GSS_KRB5_NT_PRINCIPAL_NAME
-		type = (gss_OID) GSS_KRB5_NT_PRINCIPAL_NAME;
-#else
-		type = (gss_OID) gss_nt_krb5_name;
-#endif
-#endif
+		type = (gss_OID) GSS_C_NO_OID;
 	}
 
 	maj = gss_import_name(&min, &name, type, &server);
