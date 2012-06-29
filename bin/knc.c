@@ -1771,6 +1771,7 @@ work_init(work_t *work) {
 	work->network_fd = -1;
 	work->local_in = -1;
 	work->local_out = -1;
+	work->local_err = -1;
 }
 
 #define FREE_NOTNULL(x)				\
