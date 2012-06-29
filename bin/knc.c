@@ -188,6 +188,11 @@ parse_opt(const char *prognam, const char *opt)
 		return;
 	}
 
+	if (!strcmp(opt, "noprivate")) {
+		prefs.noprivate = 1;
+		return;
+	}
+
 	fprintf(stderr, "option \"-o %s\" unrecognised.\n", opt);
 	usage(prognam);
 	exit(1);
@@ -824,8 +829,8 @@ write_network_buffer(work_t *work) {
 
 		LOG(LOG_DEBUG, ("plaintext of length %ld", (long)in.length));
 
-		maj = gss_wrap(&min, tok->gstd_ctx, 1, GSS_C_QOP_DEFAULT,
-			       &in, NULL, &out);
+		maj = gss_wrap(&min, tok->gstd_ctx, prefs.noprivate?0:1,
+			       GSS_C_QOP_DEFAULT, &in, NULL, &out);
 		GSTD_GSS_ERROR(maj, min, -1, "gss_wrap");
 
 		memcpy(&(work->network_buffer.out[4]), out.value, out.length);

@@ -112,11 +112,13 @@ in server mode, limit the maximum number of child processes to
 .Ar num .
 .It Fl o Ar opt
 allows for the setting of options.
-Currently, two options are implemented
+Currently, three options are implemented
 .Ar keepalive
-which enables TCP keepalives, and
+which enables TCP keepalives,
 .Ar no-half-close
-which will disable the half close functionality.
+which will disable the half close functionality, and
+.Ar noprivate
+which will disable encryption (but leave integrity checking).
 .It Fl w
 in server mode, start as an inetd wait service.
 That is, expect stdin to be a listening socket and process requests on it.
