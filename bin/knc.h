@@ -34,7 +34,7 @@ typedef struct prefs_s {
 	char			is_wait_service;
 	int			so_keepalive;
 	int			no_half_close;
-	int			noprivate;
+	int			noprivacy;
 	int			num_children_max;
 	int			max_connections;
 	int			max_time;

@@ -188,8 +188,13 @@ parse_opt(const char *prognam, const char *opt)
 		return;
 	}
 
+	if (!strcmp(opt, "noprivacy")) {
+		prefs.noprivacy = 1;
+		return;
+	}
+
 	if (!strcmp(opt, "noprivate")) {
-		prefs.noprivate = 1;
+		prefs.noprivacy = 1;
 		return;
 	}
 
@@ -829,7 +834,7 @@ write_network_buffer(work_t *work) {
 
 		LOG(LOG_DEBUG, ("plaintext of length %ld", (long)in.length));
 
-		maj = gss_wrap(&min, tok->gstd_ctx, prefs.noprivate?0:1,
+		maj = gss_wrap(&min, tok->gstd_ctx, prefs.noprivacy?0:1,
 			       GSS_C_QOP_DEFAULT, &in, NULL, &out);
 		GSTD_GSS_ERROR(maj, min, -1, "gss_wrap");
 
