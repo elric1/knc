@@ -1,4 +1,7 @@
 
 ACLOCAL_AMFLAGS = -I cf
 
-SUBDIRS = bin lib
+SUBDIRS  = bin
+if DEVELOPER_MODE
+SUBDIRS += lib
+endif

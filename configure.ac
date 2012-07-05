@@ -40,7 +40,9 @@ AC_SEARCH_LIBS(gss_init_sec_context, [gssapi gssapi_krb5],,,)
 # We only enable warnings if --enable-developer is specified.
 
 AC_ARG_ENABLE(developer,
-	AS_HELP_STRING([--enable-developer], [enable developer warnings]))
+	AS_HELP_STRING([--enable-developer],
+			[enable developer warnings and experimental code]))
+AM_CONDITIONAL(DEVELOPER_MODE, test "X$enable_developer" = Xyes)
 
 if test "X$enable_developer" = Xyes; then
 	WFLAGS="-Werror"
