@@ -174,6 +174,16 @@ sleep_reap() {
 	return 0;
 }
 
+char *
+xstrdup(const char *orig) {
+	char *s = strdup(orig);
+	if (!s) {
+		fprintf(stderr, "%s\n", strerror(errno));
+		exit(1);
+	}
+	return s;
+}
+
 void
 parse_opt(const char *prognam, const char *opt)
 {
@@ -200,10 +210,13 @@ parse_opt(const char *prognam, const char *opt)
 
 	if (!strncmp(opt, "syslog-ident=", strlen("syslog-ident="))) {
 		opt += strlen("syslog-ident=");
-		if (*opt)
-			prefs.syslog_ident = strdup(opt);
-		if (prefs.syslog_ident == NULL)
-			exit(errno);
+		if (!*opt) {
+			fprintf(stderr, "option \"-o %s\" requires a value\n",
+			    "syslog-ident=");
+			usage(prognam);
+			exit(1);
+		}
+		prefs.syslog_ident = xstrdup(opt);
 		return;
 	}
 
