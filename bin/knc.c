@@ -198,6 +198,15 @@ parse_opt(const char *prognam, const char *opt)
 		return;
 	}
 
+	if (!strncmp(opt, "syslog-ident=", strlen("syslog-ident="))) {
+		opt += strlen("syslog-ident=");
+		if (*opt)
+			prefs.syslog_ident = strdup(opt);
+		if (prefs.syslog_ident == NULL)
+			exit(errno);
+		return;
+	}
+
 	fprintf(stderr, "option \"-o %s\" unrecognised.\n", opt);
 	usage(prognam);
 	exit(1);
@@ -252,8 +261,6 @@ main(int argc, char **argv) {
 	prefs.progname = strdup(argv[0]);	/* facilitate stderr logs */
 	prefs.network_fd = -1;			/* wrap connection around
 						   existing socket */
-
-	openlog(argv[0], LOG_PID, LOG_DAEMON);
 
 	/* process arguments */
 	while ((c = getopt(argc, argv, "linda:?fc:o:wM:N:P:S:T:")) != -1) {
@@ -347,6 +354,11 @@ main(int argc, char **argv) {
 			exit(1);
 		}
 	}
+
+	if (prefs.syslog_ident != NULL)
+		openlog(prefs.syslog_ident, LOG_PID, LOG_DAEMON);
+	else
+		openlog(prefs.progname, LOG_PID, LOG_DAEMON);
 
 	if (prefs.is_listener && prefs.network_fd != -1) {
 		LOG(LOG_ERR, ("specifying a file descriptor with -N "

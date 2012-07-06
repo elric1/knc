@@ -116,9 +116,11 @@ Currently, three options are implemented
 .Ar keepalive
 which enables TCP keepalives,
 .Ar no-half-close
-which will disable the half close functionality, and
+which will disable the half close functionality,
 .Ar noprivacy
-which will disable encryption (but leave integrity checking).
+which will disable encryption (but leave integrity checking), and
+.Ar syslog-ident
+which will set the ident of syslog messages instead of the default of argv[0].
 .It Fl w
 in server mode, start as an inetd wait service.
 That is, expect stdin to be a listening socket and process requests on it.

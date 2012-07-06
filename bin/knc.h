@@ -45,6 +45,7 @@ typedef struct prefs_s {
 	char *			sun_path;	/* optional path to socket */
 	char *			sprinc;		/* service princ on other end */
 	char *			prog;		/* program to exec */
+	char *			syslog_ident;	/* syslog ident to use */
 	int			network_fd;	/* wrap around existing fd */
 	struct sockaddr_in	addr;
 } prefs_t;
