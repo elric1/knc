@@ -271,7 +271,7 @@ main(int argc, char **argv) {
 	prefs.use_dns = 1;
 	prefs.debug_level = LOG_ERR;		/* display LOG_ERR and worse */
 	prefs.num_children_max = 40;
-	prefs.progname = strdup(argv[0]);	/* facilitate stderr logs */
+	prefs.progname = xstrdup(argv[0]);	/* facilitate stderr logs */
 	prefs.network_fd = -1;			/* wrap connection around
 						   existing socket */
 
@@ -294,7 +294,7 @@ main(int argc, char **argv) {
 			break;
 		case 'a':
 			if (optarg != NULL) {
-				prefs.bindaddr = strdup(optarg);
+				prefs.bindaddr = xstrdup(optarg);
 			} else {
 				LOG(LOG_ERR, ("-a requires an address\n"));
 				exit(1);
@@ -338,7 +338,7 @@ main(int argc, char **argv) {
 			break;
 		case 'P':
 			if (optarg != NULL) {
-				prefs.sprinc = strdup(optarg);
+				prefs.sprinc = xstrdup(optarg);
 			} else {
 				LOG(LOG_ERR, ("-P requires an service "
 				    "principal\n"));
@@ -347,7 +347,7 @@ main(int argc, char **argv) {
 			break;
 		case 'S':
 			if (optarg != NULL) {
-				prefs.sun_path = strdup(optarg);
+				prefs.sun_path = xstrdup(optarg);
 			} else {
 				LOG(LOG_ERR, ("-S requires an address\n"));
 				exit(1);
@@ -1748,7 +1748,7 @@ do_client(int argc, char **argv) {
 	++hostname;
 
 	if (prefs.sprinc)
-		work.sprinc = strdup(prefs.sprinc);
+		work.sprinc = xstrdup(prefs.sprinc);
 
 	work.local_in = STDIN_FILENO;
 	work.local_out = STDOUT_FILENO;
@@ -1782,7 +1782,7 @@ do_client(int argc, char **argv) {
 		}
 	}
 
-	work.hostname = strdup(hostname);
+	work.hostname = xstrdup(hostname);
 	work.service = (char *)calloc(1, hostname - argv[0]);
 	memcpy(work.service, argv[0], hostname - argv[0] - 1);
 
