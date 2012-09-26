@@ -1,5 +1,11 @@
+INSTALLATION FROM RELEASE TARBALL
 
-Installation instructions:
+	$ ./configure [args]
+	$ make
+	< become appropriate user >
+	$ make install
+
+INSTALLATION FROM DEVELOPMENT SOURCES
 
 	$ autoreconf -f -i
 	$ ./configure
