@@ -150,12 +150,6 @@ knc_loop(struct knc_ctx *ctx, int server)
 		    server?"S":"C", strerror(errno));
 
 	for (;;) {
-		if (valrecv >= TEST_SIZE)
-			do_recv = 0;
-
-		if (valsend >= TEST_SIZE)
-			do_send = 0;
-
 		fprintf(stderr, "%s: loop start (% 6d), "
 		    "R=% 9d %s S=% 9d %s ToSend=% 9d\n", server?"S":"C",
 		    ++loopcount, valrecv, do_recv?"    ":"done", valsend,
@@ -189,7 +183,7 @@ knc_loop(struct knc_ctx *ctx, int server)
 				knc_fill_buf(ctx, KNC_DIR_SEND, ret);
 		}
 
-		while (do_recv && knc_avail_buf(ctx, KNC_DIR_RECV) > 0) {
+		while (knc_avail_buf(ctx, KNC_DIR_RECV) > 0) {
 			ret = knc_get_obuf(ctx, KNC_DIR_RECV,
 			    (void **)&buf, 8192);
 			if (ret <= 0)
@@ -205,6 +199,12 @@ knc_loop(struct knc_ctx *ctx, int server)
 			knc_drain_buf(ctx, KNC_DIR_RECV, ret);
 		}
 
+		if (valrecv >= TEST_SIZE)
+			do_recv = 0;
+
+		if (valsend >= TEST_SIZE)
+			do_send = 0;
+
 		FD_ZERO(&rd);
 		FD_ZERO(&wr);
 
@@ -215,6 +215,9 @@ knc_loop(struct knc_ctx *ctx, int server)
 			FD_SET(fd, &wr);
 
 		ret = select(fd+1, &rd, &wr, NULL, NULL);
+		if (ret < 0 && errno == EINTR)
+			continue;
+
 		if (ret < 0) {
 			fprintf(stderr, "select: %s\n", strerror(errno));
 			break;
