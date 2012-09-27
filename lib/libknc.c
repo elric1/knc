@@ -213,11 +213,17 @@ knc_append_stream_bit(struct knc_stream *s, struct knc_stream_bit *b)
 	return b->len;
 }
 
+#define STREAM_BIT_ALLOC_UNIT	(64 * 1024)
+
 static struct knc_stream_bit *
 knc_alloc_stream_bit(size_t len)
 {
 	struct knc_stream_bit	*bit;
 	char			*tmpbuf;
+
+	len  = len / STREAM_BIT_ALLOC_UNIT + (len % STREAM_BIT_ALLOC_UNIT)?1:0;
+	len *= STREAM_BIT_ALLOC_UNIT;
+	len  = MIN((2 * STREAM_BIT_ALLOC_UNIT), len);
 
 	bit = calloc(1, sizeof(*bit));
 	if (!bit)
@@ -282,6 +288,11 @@ knc_get_istream(struct knc_stream *s, void **buf, size_t len)
 	if (!s) {
 		/* XXXrcd: better errors... */
 		return -1;
+	}
+
+	if (s->tail && s->tail->allocated - s->tail->len > len) {
+		*buf = s->tail->buf + s->tail->len;
+		return s->tail->allocated - s->tail->len;
 	}
 
 	tmp = knc_alloc_stream_bit(len);
