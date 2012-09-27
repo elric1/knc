@@ -58,8 +58,8 @@
 
 #include <libknc.h>
 
-#define READBUFSIZ	(1024 * 1024)
-#define WRITEBUFSIZ	(1024 * 1024)
+#define READBUFSIZ	(256 * 1024)
+#define WRITEBUFSIZ	(256 * 1024)
 
 int
 main(int argc, char **argv)
@@ -85,6 +85,9 @@ main(int argc, char **argv)
 			break;
 
 		fd = knc_get_net_fd(ctx);
+
+		if (fd == -1)
+			break;
 
 		/* XXXrcd: Set non-blocking? */
 
@@ -124,14 +127,15 @@ main(int argc, char **argv)
 		}
 
 		if (FD_ISSET(0, &rd)) {
-			ret = knc_get_ibuf(ctx, KNC_DIR_SEND, &buf, 16384);
+			ret = knc_get_ibuf(ctx, KNC_DIR_SEND, (void**)&buf,
+			    16384);
 			if (ret == -1) {
 				/* XXXrcd: error handling... */
 			}
 
 			ret = read(0, buf, ret);
 
-			if (ret < 1) {
+			if (ret == -1) {
 				/* XXXrcd: error handling! */
 				fprintf(stderr, "read: %s\n", strerror(errno));
 			}
@@ -141,11 +145,17 @@ main(int argc, char **argv)
 
 		if (FD_ISSET(1, &wr)) {
 			struct iovec	*vec;
-			int		 count;
+			size_t		 count;
 
 			ret = knc_get_obufv(ctx, KNC_DIR_RECV, &vec, &count);
+
+			if (ret < 1)
+				continue;	/* XXXrcd: bad. */
+
 			ret = writev(1, vec, count);
-			/* XXXrcd: errors */
+
+			if (ret == -1)
+				fprintf(stderr, "write: %s\n", strerror(errno));
 
 			if (ret > 0)
 				knc_drain_buf(ctx, KNC_DIR_RECV, ret);
@@ -163,4 +173,3 @@ main(int argc, char **argv)
 	knc_ctx_close(ctx);
 	return ret;
 }
-
