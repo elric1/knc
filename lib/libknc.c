@@ -1298,6 +1298,8 @@ knc_flush(struct knc_ctx *ctx, int dir)
 	ssize_t		 len;
 	void		*buf;
 
+	knc_state_process_out(ctx);
+
 //	for (;;) {
 		len = knc_get_obuf(ctx, KNC_DIR_SEND, &buf, 16384);
 		if (len <= 0)
