@@ -39,7 +39,7 @@
 
 int runserver(int);
 int runclient(int, char *, char *);
-int knc_loop(struct knc_ctx *);
+int knc_loop(struct knc_ctx *, int);
 
 /*
  * unitknc: a simple test of the libknc.
@@ -74,6 +74,7 @@ main(int argc, char **argv)
 	case  0:
 		close(fds[0]);
 		ret = runserver(fds[1]);
+		fprintf(stderr, "Child exiting.\n");
 		exit(ret);
 	case -1:
 		perror("fork");
@@ -95,6 +96,8 @@ main(int argc, char **argv)
 	if (kidret)
 		fprintf(stderr, "Child failed.\n");
 
+	fprintf(stderr, "Parent exiting.\n");
+
 	if (ret || kidret)
 		return 1;
 
@@ -108,7 +111,7 @@ runserver(int fd)
 
 	fprintf(stderr, "runserver(), pid == %d\n", getpid());
 	ctx = knc_accept_fd(NULL, NULL, fd);
-	return knc_loop(ctx);
+	return knc_loop(ctx, 1);
 }
 
 int
@@ -118,18 +121,22 @@ runclient(int fd, char *service, char *hostname)
 
 	fprintf(stderr, "runclient(), pid == %d\n", getpid());
 	ctx = knc_init_fd(service, hostname, fd);
-	return knc_loop(ctx);
+	return knc_loop(ctx, 0);
 }
 
+#define TEST_SIZE	(1024 * 1024)
 #define UNIT_BUFSIZ	(75 * 1024)
 
 int
-knc_loop(struct knc_ctx *ctx)
+knc_loop(struct knc_ctx *ctx, int server)
 {
 	fd_set	 rd, wr;
 	int	 fd;
 	int	 i;
+	int	 loopcount = 0;
 	int	 ret;
+	int	 do_recv = 1;
+	int	 do_send = 1;
 	int	 valrecv = 0;
 	int	 valsend = 0;
 	char	*buf;
@@ -139,18 +146,28 @@ knc_loop(struct knc_ctx *ctx)
 	/* XXXrcd: Set non-blocking? */
 	ret = fcntl(fd, F_SETFL, O_NONBLOCK);
 	if (ret == -1)
-		fprintf(stderr, "%d: set nonblocking, %s\n",
-		    getpid(), strerror(errno));
+		fprintf(stderr, "%s: set nonblocking, %s\n",
+		    server?"S":"C", strerror(errno));
 
 	for (;;) {
-		fprintf(stderr, "%d: loop start, recv'd = %d sent = %d.\n",
-		    getpid(), valrecv, valsend);
+		if (valrecv >= TEST_SIZE)
+			do_recv = 0;
+
+		if (valsend >= TEST_SIZE)
+			do_send = 0;
+
+		fprintf(stderr, "%s: loop start (% 6d), "
+		    "R=% 9d %s S=% 9d %s ToSend=% 9d\n", server?"S":"C",
+		    ++loopcount, valrecv, do_recv?"    ":"done", valsend,
+		    do_send?"    ":"done", knc_avail_buf(ctx, KNC_DIR_SEND));
 
 		if (knc_error(ctx))
 			break;
 
-		if (knc_get_net_fd(ctx) == -1)
+		if (knc_get_net_fd(ctx) == -1) {
+			fprintf(stderr, "Other end unexpectedly closed.\n");
 			break;
+		}
 
 		/*
 		 * The data that we are sending and receiving is a simple
@@ -158,7 +175,7 @@ knc_loop(struct knc_ctx *ctx)
 		 * Both sides send the same data, so it can be validated.
 		 */
 
-		if (knc_avail_buf(ctx, KNC_DIR_SEND) < UNIT_BUFSIZ) {
+		if (do_send && knc_avail_buf(ctx, KNC_DIR_SEND) < UNIT_BUFSIZ) {
 			ret = knc_get_ibuf(ctx, KNC_DIR_SEND,
 			    (void **)&buf, 8192);
 			if (ret == -1)
@@ -172,13 +189,11 @@ knc_loop(struct knc_ctx *ctx)
 				knc_fill_buf(ctx, KNC_DIR_SEND, ret);
 		}
 
-		if (knc_avail_buf(ctx, KNC_DIR_RECV) > 0) {
-
+		while (do_recv && knc_avail_buf(ctx, KNC_DIR_RECV) > 0) {
 			ret = knc_get_obuf(ctx, KNC_DIR_RECV,
 			    (void **)&buf, 8192);
-			if (ret < 0)
-				fprintf(stderr, "%d: ret == %d for receiving\n",
-				    getpid(), ret);
+			if (ret <= 0)
+				break;
 
 			for (i=0; i < ret; i++) {
 				if (buf[i] != valrecv++ % 11) {
@@ -187,8 +202,7 @@ knc_loop(struct knc_ctx *ctx)
 				}
 			}
 
-			if (ret > 0)
-				knc_drain_buf(ctx, KNC_DIR_RECV, ret);
+			knc_drain_buf(ctx, KNC_DIR_RECV, ret);
 		}
 
 		FD_ZERO(&rd);
@@ -213,7 +227,15 @@ knc_loop(struct knc_ctx *ctx)
 			knc_flush(ctx, KNC_DIR_SEND);
 
 		knc_garbage_collect(ctx);
+
+		if (!do_send && !do_recv && !knc_avail_buf(ctx, KNC_DIR_SEND))
+			break;
 	}
+
+	fprintf(stderr, "%s: loop done  (% 6d), "
+	    "R=% 9d %s S=% 9d %s ToSend=% 9d\n", server?"S":"C",
+	    ++loopcount, valrecv, do_recv?"    ":"done", valsend,
+	    do_send?"    ":"done", knc_avail_buf(ctx, KNC_DIR_SEND));
 
 	ret = 0;
 	if (knc_error(ctx)) {
