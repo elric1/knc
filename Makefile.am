@@ -3,5 +3,5 @@ ACLOCAL_AMFLAGS = -I cf
 
 SUBDIRS  = bin
 if DEVELOPER_MODE
-SUBDIRS += lib
+SUBDIRS += lib test
 endif
