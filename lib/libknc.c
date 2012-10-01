@@ -291,7 +291,7 @@ knc_get_istream(struct knc_stream *s, void **buf, size_t len)
 	}
 
 	if (s->tail && s->tail->allocated - s->tail->len > len) {
-		*buf = s->tail->buf + s->tail->len;
+		*buf = (void *)((char *)s->tail->buf + s->tail->len);
 		return s->tail->allocated - s->tail->len;
 	}
 
