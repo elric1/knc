@@ -47,7 +47,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "gssapi/gssapi.h"
+#include "config.h"
 #include "gssstdio.h"
 #include "knc.h"
 
