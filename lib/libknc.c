@@ -137,7 +137,8 @@ static void	debug_printf(const char *, ...)
     __attribute__((__format__(__printf__, 1, 2)));
 
 static void	knc_syscall_error(struct knc_ctx *, int);
-static void	knc_gss_error(struct knc_ctx *, int, int, const char *);
+static void	knc_gss_error(struct knc_ctx *, OM_uint32, OM_uint32,
+			      const char *);
 
 static struct knc_stream_bit	*knc_alloc_stream_bit(size_t);
 static size_t			 knc_append_stream_bit(struct knc_stream *,
@@ -1381,75 +1382,72 @@ knc_write(struct knc_ctx *ctx, const void *buf, size_t len)
 
 /* XXXrcd: review this code against gssstdio.c! */
 
-static int
-knc_errstring(char **str, int min_stat)
+static char *
+knc_errstring(OM_uint32 maj_stat, OM_uint32 min_stat)
 {
 	gss_buffer_desc	 status;
 	OM_uint32	 new_stat;
+	OM_uint32	 cur_stat;
 	OM_uint32	 msg_ctx = 0;
 	OM_uint32	 ret;
-	int		 len = 0;
-	char		*tmp;
-	char		*statstr;
+	int		 type;
+	int		 newlen;
+	char		*str = NULL;
+	char		*tmp = NULL;
 
-	/* XXXrcd this is not correct yet */
-	/* XXXwps ...and now it is. */
+	cur_stat =maj_stat;
+	type = GSS_C_GSS_CODE;
 
-	if (!str)
-		return -1;
+	for (;;) {
 
-	*str = NULL;
-	tmp = NULL;
+		/*
+		 * GSS_S_FAILURE produces a rather unhelpful message, so
+		 * we skip straight to the mech specific error in this case.
+		 */
 
-	do {
-		ret = gss_display_status(&new_stat, min_stat,
-		    GSS_C_MECH_CODE, GSS_C_NO_OID, &msg_ctx,
-		    &status);
+		if (type == GSS_C_GSS_CODE && cur_stat == GSS_S_FAILURE) {
+			type = GSS_C_MECH_CODE;
+			cur_stat = min_stat;
+		}
 
-		/* GSSAPI strings are not NUL terminated */
-		if ((statstr = (char *)malloc(status.length + 1)) == NULL) {
-			DEBUG(("unable to malloc status string of length %zu",
-			    status.length));
+		ret = gss_display_status(&new_stat, cur_stat, type,
+		    GSS_C_NO_OID, &msg_ctx, &status);
+
+                if (GSS_ERROR(ret))
+                        return str;     /* XXXrcd: hmmm, not quite?? */
+
+		newlen = (str?strlen(str):0) + status.length + 3;
+
+		tmp = str;
+		str = malloc(newlen);
+
+		if (!str) {
 			gss_release_buffer(&new_stat, &status);
-			free(statstr);
-			free(tmp);
-			return 0;
+			return tmp;     /* XXXrcd: hmmm, not quite?? */
 		}
 
-		memcpy(statstr, status.value, status.length);
-		statstr[status.length] = '\0';
-
-		if (GSS_ERROR(ret)) {
-			free(statstr);
-			free(tmp);
-			break;
-		}
-
-		if (*str) {
-/* XXXrcd: memory leak? */
-			if ((*str = malloc(strlen(*str) + status.length +
-					   3)) == NULL) {
-				DEBUG(("unable to malloc error string"));
-				gss_release_buffer(&new_stat, &status);
-				free(statstr);
-				free(tmp);
-				return 0;
-			}
-
-			len = sprintf(*str, "%s, %s", tmp, statstr);
-		} else {
-			*str = malloc(status.length + 1);
-			len = sprintf(*str, "%s", (char *)statstr);
-		}
+		snprintf(str, newlen, "%s%s%.*s", tmp?tmp:"", tmp?", ":"",
+		    (int)status.length, (char *)status.value);
 
 		gss_release_buffer(&new_stat, &status);
-		free(statstr);
 		free(tmp);
 
-		tmp = *str;
-	} while (msg_ctx != 0);
+		/*
+		 * If we are finished processing for maj_stat, then
+		 * move onto min_stat.
+		 */
 
-	return len;
+		if (msg_ctx == 0 && type == GSS_C_GSS_CODE && min_stat != 0) {
+			type = GSS_C_MECH_CODE;
+			cur_stat = min_stat;
+			continue;
+		}
+
+		if (msg_ctx == 0)
+			break;
+	}
+
+	return str;
 }
 
 static void
@@ -1462,12 +1460,13 @@ knc_syscall_error(struct knc_ctx *ctx, int errorno)
 }
 
 static void
-knc_gss_error(struct knc_ctx *ctx, int maj_stat, int min_stat, const char *s)
+knc_gss_error(struct knc_ctx *ctx, OM_uint32 maj_stat, OM_uint32 min_stat,
+	      const char *s)
 {
 
 	ctx->error = KNC_ERROR_GSS;
-	if (knc_errstring(&ctx->errstr, min_stat) < 1) {
-		ctx->errstr = strdup("Failed to construct GSS error");
-	}
+        ctx->errstr = knc_errstring(maj_stat, min_stat);
+        if (!ctx->errstr)
+                ctx->errstr = strdup("Failed to construct GSS error");
 	DEBUG(("knc_gss_error: %s\n", ctx->errstr));
 }
