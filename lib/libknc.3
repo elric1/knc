@@ -42,6 +42,15 @@
 .Fn knc_accept "const char *service" "const char *hostname"
 .Ft "struct knc_ctx *"
 .Fn knc_accept_fd "const char *service" "const char *hostname" "int fd"
+.Ss Examining and Altering Contexts
+.Ft int
+.Fn knc_get_net_fd "struct knc_ctx *ctx"
+.Ft void
+.Fn knc_set_net_fd "struct knc_ctx *ctx" "int fd"
+.Ft int
+.Fn knc_get_local_fd "struct knc_ctx *ctx"
+.Ft void
+.Fn knc_set_local_fd "struct knc_ctx *ctx" "int fd"
 .Ss The Simple Read/Write Interface
 .Ft ssize_t
 .Fn knc_read "struct knc_ctx *ctx" "void *buf" "size_t len"
@@ -107,6 +116,21 @@ creates a KNC initatiator which is not attached to any file descriptors.
 creates a KNC initiator which is attached to the provided file descriptor.
 .It Fn knc_connect
 connects to the host and service specified.
+.El
+.Pp
+There are various functions that can be used to examine or alter the
+the current context:
+.Bl -tag -widtch knc_get_local_fdXXX
+.It Fn knc_get_net_fd
+returns the fd associated with the network side of the context or -1
+if no fd is associated.
+.It Fn knc_set_net_fd
+sets the fd associated with the network side of the context.
+.It Fn knc_get_local_fd
+returns the fd associated with the local side of the context or -1
+if no fd is associated.
+.It Fn knc_get_local_fd
+sets the fd associated with the local side of the context.
 .El
 .Pp
 After a KNC context has been constructed and properly set up as according
