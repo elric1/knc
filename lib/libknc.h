@@ -60,6 +60,7 @@ const char		*knc_errstr(struct knc_ctx *);
 
 void	knc_set_local_fd(struct knc_ctx *, int);
 int	knc_get_local_fd(struct knc_ctx *);
+void	knc_set_net_fd(struct knc_ctx *, int);
 int	knc_get_net_fd(struct knc_ctx *);
 ssize_t	knc_read(struct knc_ctx *, void *, size_t);
 ssize_t	knc_write(struct knc_ctx *, const void *, size_t);

@@ -679,10 +679,7 @@ knc_accept_fd(const char *service, const char *hostname, int fd)
 	if (!ctx)
 		return NULL;
 
-	ctx->netread   = read;
-	ctx->netwritev = writev;
-	ctx->netclose  = close;
-	ctx->net_fd    = fd;
+	knc_set_net_fd(ctx, fd);
 
 	return ctx;
 }
@@ -1097,20 +1094,6 @@ knc_garbage_collect(struct knc_ctx *ctx)
 	knc_stream_garbage_collect(&ctx->cooked_send);
 }
 
-int
-knc_get_net_fd(struct knc_ctx *ctx)
-{
-
-	return ctx->net_fd;
-}
-
-int
-knc_get_local_fd(struct knc_ctx *ctx)
-{
-
-	return ctx->local_fd;
-}
-
 struct knc_ctx *
 knc_init_fd(const char *service, const char *hostname, int fd)
 {
@@ -1118,12 +1101,37 @@ knc_init_fd(const char *service, const char *hostname, int fd)
 
 	ctx = knc_initiate(service, hostname);
 
+	if (!ctx)
+		return NULL;
+
+	knc_set_net_fd(ctx, fd);
+
+	return ctx;
+}
+
+int
+knc_get_net_fd(struct knc_ctx *ctx)
+{
+
+	return ctx->net_fd;
+}
+
+void
+knc_set_net_fd(struct knc_ctx *ctx, int fd)
+{
+
 	ctx->netread   = read;
 	ctx->netwritev = writev;
 	ctx->netclose  = close;
-	ctx->net_fd    = fd;
 
-	return ctx;
+	ctx->net_fd = fd;
+}
+
+int
+knc_get_local_fd(struct knc_ctx *ctx)
+{
+
+	return ctx->local_fd;
 }
 
 void
