@@ -665,6 +665,13 @@ knc_errstr(struct knc_ctx *ctx)
 	return "Could not allocate memory to report error, malloc(3) failed.";
 }
 
+int
+knc_is_established(struct knc_ctx *ctx)
+{
+
+	return ctx->state == STATE_SESSION || ctx->state == STATE_COMMAND;
+}
+
 struct knc_ctx *
 knc_accept(const char *service, const char *hostname)
 {

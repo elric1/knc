@@ -44,6 +44,8 @@
 .Fn knc_accept_fd "const char *service" "const char *hostname" "int fd"
 .Ss Examining and Altering Contexts
 .Ft int
+.Fn knc_is_established "struct knc_ctx *ctx"
+.Ft int
 .Fn knc_get_net_fd "struct knc_ctx *ctx"
 .Ft void
 .Fn knc_set_net_fd "struct knc_ctx *ctx" "int fd"
@@ -142,6 +144,8 @@ later via
 .Fn knc_set_remote_fd .
 In this case, the following functions can be used:
 .Bl -tag -width knc_writeXXX
+.It Fn knc_is_established 
+returns true if the connexion has been established.
 .It Fn knc_read
 will read data from the object, causing data to be read from the network
 if necessary.

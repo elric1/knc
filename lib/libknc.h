@@ -58,6 +58,7 @@ const char		*knc_errstr(struct knc_ctx *);
  */
 
 
+int	knc_is_established(struct knc_ctx *);
 void	knc_set_local_fd(struct knc_ctx *, int);
 int	knc_get_local_fd(struct knc_ctx *);
 void	knc_set_net_fd(struct knc_ctx *, int);
