@@ -77,11 +77,15 @@ struct knc_ctx {
 	gss_ctx_id_t		 gssctx;
 	gss_name_t		 client;	/* only set for an acceptor */
 	gss_name_t		 server;	/* only set for an initiator */
+	int			 open;
+#define OPEN_READ	0x10
+#define OPEN_WRITE	0x20
 	int			 state;
 #define STATE_UNKNOWN	0x0
 #define STATE_ACCEPT	0x1
 #define STATE_INIT	0x2
 #define STATE_SESSION	0x3
+#define STATE_COMMAND	0x4
 	int			 net_fd;
 	int			 local_fd;
 	int			 error;
@@ -162,6 +166,7 @@ static ssize_t	put_packet(struct knc_stream *, gss_buffer_t);
 static int	knc_state_init(struct knc_ctx *, void *, size_t);
 static int	knc_state_accept(struct knc_ctx *, void *, size_t);
 static int	knc_state_session(struct knc_ctx *, void *, size_t);
+static int	knc_state_command(struct knc_ctx *, void *, size_t);
 static int	knc_state_process_in(struct knc_ctx *);
 static int	knc_state_process_out(struct knc_ctx *);
 static int	knc_state_process(struct knc_ctx *);
@@ -599,8 +604,13 @@ put_packet(struct knc_stream *s, gss_buffer_t buf)
 struct knc_ctx *
 knc_ctx_init(void)
 {
+	struct knc_ctx	*ret;
 
-	return calloc(1, sizeof(struct knc_ctx));
+	ret = calloc(1, sizeof(struct knc_ctx));
+
+	ret->open = OPEN_READ|OPEN_WRITE;
+
+	return ret;
 }
 
 void
@@ -786,8 +796,46 @@ knc_state_session(struct knc_ctx *ctx, void *buf, size_t len)
 		return -1;
 	}
 
+	if (out.length == 0) {
+		ctx->state = STATE_COMMAND;
+		return 0;
+	}
+
 	knc_put_stream_gssbuf(&ctx->cooked_recv, &out);
 
+	return 0;
+}
+
+static int
+knc_state_command(struct knc_ctx *ctx, void *buf, size_t len)
+{
+	gss_buffer_desc	in;
+	gss_buffer_desc	out;
+	OM_uint32	maj;
+	OM_uint32	min;
+
+	in.value  = buf;
+	in.length = len;
+
+	out.length = 0;
+
+	DEBUG(("knc_state_command: enter\n"));
+	maj = gss_unwrap(&min, ctx->gssctx, &in, &out, NULL, NULL);
+
+	/* XXXrcd: better error handling... */
+	if (maj != GSS_S_COMPLETE) {
+		knc_gss_error(ctx, maj, min, "gss_unwrap");
+		return -1;
+	}
+
+	if (out.length == 0) {
+		/* Close the stream for reading... */
+		ctx->open &= ~(OPEN_READ|OPEN_WRITE);
+	}
+
+	/* XXXrcd: unknown command.  should we continue?  yes, for now. */
+
+	ctx->state = STATE_SESSION;
 	return 0;
 }
 
@@ -826,6 +874,9 @@ knc_state_process_in(struct knc_ctx *ctx)
 			break;
 		case STATE_SESSION:
 			ret = knc_state_session(ctx, buf, len);
+			break;
+		case STATE_COMMAND:
+			ret = knc_state_command(ctx, buf, len);
 			break;
 		default:		
 			ret = -1;
