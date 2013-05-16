@@ -759,13 +759,6 @@ knc_state_accept(struct knc_ctx *ctx, void *buf, size_t len)
 	    NULL, NULL);
 
 	if (out.length) {
-		/*
-		 * XXXrcd: cheesy, knc will later free out.value which is
-		 * actually acceptable in MIT krb5...  But the code is not
-		 * correct as we should not assume that out.value has been
-		 * allocated in a particular way.  We save a copy this way,
-		 * though.
-		 */
 		put_packet(&ctx->cooked_send, &out);
 		/* XXXrcd: ERRORS?!? */
 	}
