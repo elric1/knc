@@ -44,8 +44,6 @@ struct knc_ctx		*knc_accept(const char *, const char *);
 struct knc_ctx		*knc_accept_fd(const char *, const char *, int);
 void			 knc_ctx_close(struct knc_ctx *);
 
-int			 knc_get_fd(struct knc_ctx *);
-
 void			 knc_set_debug(struct knc_ctx *, int);
 
 struct knc_stream	*knc_init_stream(void);
