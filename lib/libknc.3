@@ -101,6 +101,10 @@
 .Fa "void (*callback)(void *, void *)" "void *cookie"
 .Fc
 .Ft int
+.Fo knc_put_mmapbuf
+.Fa "knc_ctx ctx" "int dir" "size_t len" "int flags" "int fd" "off_t offset"
+.Fc
+.Ft int
 .Fn knc_get_ibuf "knc_ctx ctx" "int dir" "void **buf" "size_t len"
 .Ft int
 .Fn knc_get_obuf "knc_ctx ctx" "int dir" "void **buf" "size_t len"
@@ -378,6 +382,17 @@ is called with
 and
 .Ar cookie
 as its arguments.
+.It Fn knc_put_mmapbuf ctx dir len flags fd offset
+will
+.Xr mmap 2
+a region of
+.Ar fd
+by calling
+.Fn mmap NULL len PROT_READ flags fd offset ,
+put the resultant buffer onto the input side of the desired stream,
+and
+.Xr munmap 2
+it when it has been consumed.
 .It Fn knc_get_ibuf ctx dir buf len
 will allocate and provide a pointer to a buffer in the input side of
 the specified stream, ensuring that the buffer is of at least the

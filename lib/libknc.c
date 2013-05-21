@@ -25,6 +25,7 @@
 
 #include "config.h"
 
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
 
@@ -314,6 +315,40 @@ knc_put_stream_gssbuf(struct knc_stream *s, gss_buffer_t inbuf)
 
 	return knc_put_stream_userbuf(s, buf->value, buf->length, free_gssbuf,
 	    buf);
+}
+
+struct mmapregion {
+	void	*buf;
+	size_t	 len;
+};
+
+static void
+free_mmapbuf(void *buf, void *cookie)
+{
+	struct mmapregion	*r = cookie;
+
+	munmap(r->buf, r->len);
+	free(r);
+}
+
+static int
+knc_put_stream_mmapbuf(struct knc_stream *s, size_t len, int flags, int fd,
+		       off_t offset)
+{
+	struct mmapregion	*r;
+	char			*buf;
+
+	r = calloc(1, sizeof(*r));
+	if (!r)
+		return -1;
+
+	r->buf = mmap(NULL, len, PROT_READ, flags, fd, offset);;
+	r->len = len;
+
+	if (!buf)
+		return -1;
+
+	return knc_put_stream_userbuf(s, r->buf, r->len, free_mmapbuf, r);
 }
 
 static int
@@ -1200,6 +1235,15 @@ knc_put_ubuf(knc_ctx ctx, int dir, void *buf, size_t len,
 
 	return knc_put_stream_userbuf(knc_find_buf(ctx, KNC_SIDE_IN, dir),
 	    buf, len, callback, cookie);
+}
+
+int
+knc_put_mmapbuf(knc_ctx ctx, int dir, size_t len, int flags, int fd,
+		off_t offset)
+{
+
+	return knc_put_stream_mmapbuf(knc_find_buf(ctx, KNC_SIDE_IN, dir),
+	    len, flags, fd, offset);
 }
 
 int
