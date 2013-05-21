@@ -23,49 +23,66 @@
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <gssapi/gssapi.h>
 
 /*
- *
+ * The opaque data structure definition:
  */
 
-struct knc_stream;
 struct knc_ctx;
+typedef struct knc_ctx *knc_ctx;
 
 /*
  * The various constructors:
  */
 
-struct knc_ctx		*knc_ctx_init(void);
-struct knc_ctx		*knc_initiate(const char *, const char *);
-struct knc_ctx		*knc_init_fd(const char *, const char *, int);
-struct knc_ctx		*knc_connect(const char *, const char *, const char *);
-struct knc_ctx		*knc_connect_parse(const char *, int);
-struct knc_ctx		*knc_accept(const char *, const char *);
-struct knc_ctx		*knc_accept_fd(const char *, const char *, int);
-void			 knc_ctx_close(struct knc_ctx *);
+knc_ctx		knc_ctx_init(void);
+void		knc_ctx_close(knc_ctx);
 
-void			 knc_set_debug(struct knc_ctx *, int);
+/* Altering and querying the context */
 
-struct knc_stream	*knc_init_stream(void);
+int		knc_is_established(knc_ctx);
+void		knc_set_cred(knc_ctx, gss_cred_id_t);
+void		knc_set_service(knc_ctx, gss_name_t);
+void		knc_import_set_service(knc_ctx, const char *, const gss_OID);
+void		knc_import_set_hb_service(knc_ctx, const char *, const char *);
+void		knc_set_cb(knc_ctx, gss_channel_bindings_t);
+void		knc_set_req_mech(knc_ctx, gss_OID);
+gss_OID		knc_get_ret_mech(knc_ctx);
+void		knc_set_req_flags(knc_ctx, OM_uint32);
+OM_uint32	knc_get_ret_flags(knc_ctx);
+void		knc_set_time_req(knc_ctx, OM_uint32);
+OM_uint32	knc_get_time_rec(knc_ctx);
+gss_name_t	knc_get_client(knc_ctx);
+gss_cred_id_t	knc_get_deleg_cred(knc_ctx);
+void		knc_set_local_fd(knc_ctx, int);
+int		knc_get_local_fd(knc_ctx);
+void		knc_set_net_fd(knc_ctx, int);
+int		knc_get_net_fd(knc_ctx);
+void		knc_set_debug(knc_ctx, int);
 
-int			 knc_error(struct knc_ctx *);
-const char		*knc_errstr(struct knc_ctx *);
+/* Error handling */
 
-/*
- * The simple(?) interface
- */
+int		 knc_error(knc_ctx);
+const char	*knc_errstr(knc_ctx);
 
+/* Establishing the connexion */
 
-int	knc_is_established(struct knc_ctx *);
-void	knc_set_local_fd(struct knc_ctx *, int);
-int	knc_get_local_fd(struct knc_ctx *);
-void	knc_set_net_fd(struct knc_ctx *, int);
-int	knc_get_net_fd(struct knc_ctx *);
-ssize_t	knc_read(struct knc_ctx *, void *, size_t);
-ssize_t	knc_write(struct knc_ctx *, const void *, size_t);
-int	knc_fill(struct knc_ctx *, int);
-int	knc_flush(struct knc_ctx *, int);
-void	knc_garbage_collect(struct knc_ctx *);
+void		knc_initiate(knc_ctx);
+void		knc_accept(knc_ctx);
+
+/* Helper functions for establishing connexions */
+
+knc_ctx		knc_connect(knc_ctx, const char *, const char *,
+			    const char *, int);
+
+/* The simple(?) interface */
+
+ssize_t		knc_read(knc_ctx, void *, size_t);
+ssize_t		knc_write(knc_ctx, const void *, size_t);
+int		knc_fill(knc_ctx, int);
+int		knc_flush(knc_ctx, int, size_t);
+void		knc_garbage_collect(knc_ctx);
 
 /*
  * The buffer interface allows programmers to use KNC as a simple byte
@@ -75,12 +92,12 @@ void	knc_garbage_collect(struct knc_ctx *);
 #define KNC_DIR_RECV	0x1
 #define KNC_DIR_SEND	0x2
 
-int	knc_put_buf(struct knc_ctx *, int, const void *,  size_t);
-int	knc_get_ibuf(struct knc_ctx *, int, void **, size_t);
-int	knc_get_obuf(struct knc_ctx *, int, void **, size_t);
-int	knc_get_obufv(struct knc_ctx *, int dir, struct iovec **, size_t *);
-int	knc_drain_buf(struct knc_ctx *, int, int);
-int	knc_fill_buf(struct knc_ctx *, int, int);
-int	knc_avail_buf(struct knc_ctx *, int);
-
-
+int		knc_put_buf(knc_ctx, int, const void *,  size_t);
+int		knc_put_ubuf(knc_ctx, int, void *, size_t,
+			     void (*)(void *, void *), void *);
+int		knc_get_ibuf(knc_ctx, int, void **, size_t);
+int		knc_get_obuf(knc_ctx, int, void **, size_t);
+int		knc_get_obufv(knc_ctx, int dir, struct iovec **, size_t *);
+int		knc_drain_buf(knc_ctx, int, int);
+int		knc_fill_buf(knc_ctx, int, int);
+int		knc_pending(knc_ctx, int);

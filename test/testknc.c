@@ -64,16 +64,22 @@
 int
 main(int argc, char **argv)
 {
-	struct knc_ctx	*ctx;
-	int		 ret;
-	char		*buf;
+	knc_ctx	 ctx;
+	int	 ret;
+	char	*buf;
 
 	if (argc < 2) {
 		fprintf(stderr, "Usage: knc [<service>@]host[:port]\n");
 		exit(1);
 	}
 
-	ctx = knc_connect_parse(*++argv, 0);
+	ctx = knc_connect(NULL, *++argv, "host", NULL, 0);
+
+	if (!ctx) {
+		/* XXXrcd: better? */
+		fprintf(stderr, "out of memory\n");
+		exit(1);
+	}
 
 //	knc_set_debug(ctx, 1);
 
@@ -100,16 +106,16 @@ main(int argc, char **argv)
 		 * at any time.
 		 */
 
-		if (knc_avail_buf(ctx, KNC_DIR_SEND) < WRITEBUFSIZ)
+		if (knc_pending(ctx, KNC_DIR_SEND) < WRITEBUFSIZ)
 			FD_SET(0, &rd);
 
-		if (fd != -1 && knc_avail_buf(ctx, KNC_DIR_RECV) < READBUFSIZ)
+		if (fd != -1 && knc_pending(ctx, KNC_DIR_RECV) < READBUFSIZ)
 			FD_SET(fd, &rd);
 
-		if (knc_avail_buf(ctx, KNC_DIR_RECV) > 0)
+		if (knc_pending(ctx, KNC_DIR_RECV) > 0)
 			FD_SET(1, &wr);
 
-		if (fd != -1 && knc_avail_buf(ctx, KNC_DIR_SEND) > 0)
+		if (fd != -1 && knc_pending(ctx, KNC_DIR_SEND) > 0)
 			FD_SET(fd, &wr);
 
 		ret = select(fd+1, &rd, &wr, NULL, NULL);
@@ -119,7 +125,7 @@ main(int argc, char **argv)
 		}
 
 		if (FD_ISSET(fd, &wr))
-			knc_flush(ctx, KNC_DIR_SEND);
+			knc_flush(ctx, KNC_DIR_SEND, 0);
 
 		if (FD_ISSET(fd, &rd)) {
 			knc_fill(ctx, KNC_DIR_RECV);

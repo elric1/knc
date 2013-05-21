@@ -39,7 +39,7 @@
 
 int runserver(int);
 int runclient(int, char *, char *);
-int knc_loop(struct knc_ctx *, int);
+int knc_loop(knc_ctx, int);
 
 /*
  * unitknc: a simple test of the libknc.
@@ -107,20 +107,31 @@ main(int argc, char **argv)
 int
 runserver(int fd)
 {
-	struct knc_ctx	*ctx;
+	knc_ctx	ctx;
 
 	fprintf(stderr, "runserver(), pid == %d\n", getpid());
-	ctx = knc_accept_fd(NULL, NULL, fd);
+
+	ctx = knc_ctx_init();
+
+	knc_set_net_fd(ctx, fd);
+	knc_accept(ctx);
+
 	return knc_loop(ctx, 1);
 }
 
 int
 runclient(int fd, char *service, char *hostname)
 {
-	struct knc_ctx	*ctx;
+	knc_ctx ctx;
 
 	fprintf(stderr, "runclient(), pid == %d\n", getpid());
-	ctx = knc_init_fd(service, hostname, fd);
+
+	ctx = knc_ctx_init();
+
+	knc_import_set_hb_service(ctx, hostname, service);
+	knc_set_net_fd(ctx, fd);
+	knc_initiate(ctx);
+
 	return knc_loop(ctx, 0);
 }
 
@@ -128,7 +139,7 @@ runclient(int fd, char *service, char *hostname)
 #define UNIT_BUFSIZ	(75 * 1024)
 
 int
-knc_loop(struct knc_ctx *ctx, int server)
+knc_loop(knc_ctx ctx, int server)
 {
 	fd_set	 rd, wr;
 	int	 fd;
@@ -153,7 +164,7 @@ knc_loop(struct knc_ctx *ctx, int server)
 		fprintf(stderr, "%s: loop start (% 6d), "
 		    "R=% 9d %s S=% 9d %s ToSend=% 9d\n", server?"S":"C",
 		    ++loopcount, valrecv, do_recv?"    ":"done", valsend,
-		    do_send?"    ":"done", knc_avail_buf(ctx, KNC_DIR_SEND));
+		    do_send?"    ":"done", knc_pending(ctx, KNC_DIR_SEND));
 
 		if (knc_error(ctx))
 			break;
@@ -169,7 +180,7 @@ knc_loop(struct knc_ctx *ctx, int server)
 		 * Both sides send the same data, so it can be validated.
 		 */
 
-		if (do_send && knc_avail_buf(ctx, KNC_DIR_SEND) < UNIT_BUFSIZ) {
+		if (do_send && knc_pending(ctx, KNC_DIR_SEND) < UNIT_BUFSIZ) {
 			ret = knc_get_ibuf(ctx, KNC_DIR_SEND,
 			    (void **)&buf, 8192);
 			if (ret == -1)
@@ -183,7 +194,7 @@ knc_loop(struct knc_ctx *ctx, int server)
 				knc_fill_buf(ctx, KNC_DIR_SEND, ret);
 		}
 
-		while (knc_avail_buf(ctx, KNC_DIR_RECV) > 0) {
+		while (knc_pending(ctx, KNC_DIR_RECV) > 0) {
 			ret = knc_get_obuf(ctx, KNC_DIR_RECV,
 			    (void **)&buf, 8192);
 			if (ret <= 0)
@@ -208,10 +219,10 @@ knc_loop(struct knc_ctx *ctx, int server)
 		FD_ZERO(&rd);
 		FD_ZERO(&wr);
 
-		if (knc_avail_buf(ctx, KNC_DIR_RECV) < UNIT_BUFSIZ)
+		if (knc_pending(ctx, KNC_DIR_RECV) < UNIT_BUFSIZ)
 			FD_SET(fd, &rd);
 
-		if (knc_avail_buf(ctx, KNC_DIR_SEND) > 0)
+		if (knc_pending(ctx, KNC_DIR_SEND) > 0)
 			FD_SET(fd, &wr);
 
 		ret = select(fd+1, &rd, &wr, NULL, NULL);
@@ -227,18 +238,18 @@ knc_loop(struct knc_ctx *ctx, int server)
 			knc_fill(ctx, KNC_DIR_RECV);
 
 		if (FD_ISSET(fd, &wr))
-			knc_flush(ctx, KNC_DIR_SEND);
+			knc_flush(ctx, KNC_DIR_SEND, 0);
 
 		knc_garbage_collect(ctx);
 
-		if (!do_send && !do_recv && !knc_avail_buf(ctx, KNC_DIR_SEND))
+		if (!do_send && !do_recv && !knc_pending(ctx, KNC_DIR_SEND))
 			break;
 	}
 
 	fprintf(stderr, "%s: loop done  (% 6d), "
 	    "R=% 9d %s S=% 9d %s ToSend=% 9d\n", server?"S":"C",
 	    ++loopcount, valrecv, do_recv?"    ":"done", valsend,
-	    do_send?"    ":"done", knc_avail_buf(ctx, KNC_DIR_SEND));
+	    do_send?"    ":"done", knc_pending(ctx, KNC_DIR_SEND));
 
 	ret = 0;
 	if (knc_error(ctx)) {

@@ -28,65 +28,105 @@
 .Nd Kerberised NetCat C interface
 .Sh SYNOPSIS
 .In libknc.h
-.Ss Client Constructors
-.Ft "struct knc_ctx *"
-.Fn knc_initiate "const char *service" "const char *hostname"
-.Ft "struct knc_ctx *"
-.Fn knc_init_fd "const char *service" "const char *hostname" "int fd"
-.Ft "struct knc_ctx *"
-.Fn knc_connect "const char *service" "const char *hostname" "const char *port"
-.Ft "struct knc_ctx *"
-.Fn knc_connect_parse "const char *hostservicespec" "int opts"
-.Ss Server Constructors
-.Ft "struct knc_ctx *"
-.Fn knc_accept "const char *service" "const char *hostname"
-.Ft "struct knc_ctx *"
-.Fn knc_accept_fd "const char *service" "const char *hostname" "int fd"
+.Ss Constructors and Destructor
+.Ft "knc_ctx"
+.Fn knc_ctx_init "void"
+.Ft "knc_ctx"
+.Fo knc_connect
+.Fa "knc_ctx ctx" "char *hostservice" "char *defservice"
+.Fa "char *defport" "int opts"
+.Fc
+.Ft void
+.Fn knc_ctx_close "knc_ctx ctx"
 .Ss Examining and Altering Contexts
 .Ft int
-.Fn knc_is_established "struct knc_ctx *ctx"
-.Ft int
-.Fn knc_get_net_fd "struct knc_ctx *ctx"
+.Fn knc_is_authenticated "knc_ctx ctx"
 .Ft void
-.Fn knc_set_net_fd "struct knc_ctx *ctx" "int fd"
-.Ft int
-.Fn knc_get_local_fd "struct knc_ctx *ctx"
+.Ft gss_name_t
+.Fn knc_get_client "knc_ctx ctx"
+.Fn knc_set_cred "knc_ctx ctx" "gss_cred_id_t cred"
 .Ft void
-.Fn knc_set_local_fd "struct knc_ctx *ctx" "int fd"
-.Ss The Simple Read/Write Interface
+.Fn knc_set_service "knc_ctx ctx" "gss_name_t gssname"
+.Ft void
+.Fo knc_import_set_service
+.Fa "knc_ctx ctx" "const char *service"
+.Fa "const gss_OID nametype"
+.Fc
+.Fo knc_import_set_hb_service
+.Fa "knc_ctx ctx" "const char *hostservice"
+.Fa "const char *defservice"
+.Fc
+.Ft void
+.Fn knc_set_cb "knc_ctx ctx" "gss_channel_bindings_t bindings"
+.Ft void
+.Fn knc_set_req_mech "knc_ctx ctx" "gss_OID mech"
+.Ft gss_OID
+.Fn knc_get_ret_mech "knc_ctx ctx"
+.Ft void
+.Fn knc_set_req_flags "knc_ctx ctx" "OM_uint32 flags"
+.Ft OM_uint32
+.Fn knc_get_ret_flags "knc_ctx ctx"
+.Ft void
+.Fn knc_set_time_req "knc_ctx ctx" "OM_uint32 time"
+.Ft OM_uint32
+.Fn knc_get_time_rec "knc_ctx ctx"
+.Ft gss_cred_id_t
+.Fn knc_get_deleg_cred "knc_ctx ctx"
+.Ft int
+.Fn knc_get_net_fd "knc_ctx ctx"
+.Ft void
+.Fn knc_set_net_fd "knc_ctx ctx" "int fd"
+.Ft int
+.Fn knc_get_local_fd "knc_ctx ctx"
+.Ft void
+.Fn knc_set_local_fd "knc_ctx ctx" "int fd"
+.Ss Starting the Connexion
+.Ft void
+.Fn knc_initiate "knc_ctx ctx"
+.Ft void
+.Fn knc_accept "knc_ctx ctx"
+.Ss The Simple Blocking Interface
+.Ft void
+.Fn knc_authenticate "knc_ctx ctx"
 .Ft ssize_t
-.Fn knc_read "struct knc_ctx *ctx" "void *buf" "size_t len"
+.Fn knc_read "knc_ctx ctx" "void *buf" "size_t len"
 .Ft ssize_t
-.Fn knc_write "struct knc_ctx *ctx" "const void *buf" "size_t len"
+.Fn knc_write "knc_ctx ctx" "const void *buf" "size_t len"
 .Ss The More Complex Buffer Based Interface
 .Ft int
 .Fn knc_put_buf "struct knc_ctx *ctx" "int dir" "const void *" "int len"
 .Ft int
-.Fn knc_get_ibuf "struct knc_ctx *ctx" "int dir" "void **buf" "int len"
+.Fo knc_put_ubuf
+.Fa "knc_ctx ctx" "int dir" "void *" "size_t len"
+.Fa "void (*callback)(void *, void *)" "void *cookie"
+.Fc
 .Ft int
-.Fn knc_get_obuf "struct knc_ctx *ctx" "int dir" "void **buf" "int len"
+.Fn knc_get_ibuf "knc_ctx ctx" "int dir" "void **buf" "size_t len"
 .Ft int
-.Fn knc_get_obufv "struct knc_ctx *ctx" "struct iovec **vec" "size_t *count"
+.Fn knc_get_obuf "knc_ctx ctx" "int dir" "void **buf" "size_t len"
 .Ft int
-.Fn knc_drain_buf "struct knc_ctx *ctx" "int dir" "int len"
+.Fn knc_get_obufv "knc_ctx ctx" int dir" "struct iovec **vec" "size_t *count"
 .Ft int
-.Fn knc_fill_buf "struct knc_ctx *ctx" "int dir" "int len"
+.Fn knc_drain_buf "knc_ctx ctx" "int dir" "size_t len"
 .Ft int
-.Fn knc_fill "struct knc_ctx *ctx"
+.Fn knc_fill_buf "knc_ctx ctx" "int dir" "size_t len"
 .Ft int
-.Fn knc_flush "struct knc_ctx *ctx"
+.Fn knc_fill "knc_ctx ctx" "int dir"
 .Ft int
-.Fn knc_avail_buf "struct knc_ctx *ctx" "int dir"
+.Fn knc_flush "knc_ctx ctx" "int dir" "size_t len"
+.Ft int
+.Fn knc_avail_buf "knc_ctx ctx" "int dir"
 .Ss Error handling
 .Ft int
-.Fn knc_error "struct knc_ctx *ctx"
+.Fn knc_error "knc_ctx ctx"
 .Ft "const char *"
-.Fn knc_errstr "struct knc_ctx *ctx"
+.Fn knc_errstr "knc_ctx ctx"
 .Ss Garbage Collection
 .Ft void
-.Fn knc_garbage_collect "struct knc_ctx *ctx"
+.Fn knc_garbage_collect "knc_ctx ctx"
+.Ss Closing the Connexion
 .Ft int
-.Fn knc_close "struct knc_ctx *ctx"
+.Fn knc_close "knc_ctx ctx"
 .Sh DESCRIPTION
 .Nm
 provides a C interface to the KNC protocol as implemented by
@@ -102,6 +142,8 @@ The other is the receive stream
 .Pq Dv KNC_DIR_RECV
 which receives data from the remote side of the connexion, this is the
 connexion from which data is read.
+Although, we will see later that there are cases it might be desired
+to read and write from both the send and receive streams.
 .Pp
 .Nm
 takes care of buffering its input and output appropriately allowing
@@ -109,44 +151,179 @@ the setting of high and low buffer limits and the like.
 .Pp
 .Nm
 is used by first calling one of the constructor functions which
-will return a pointer to an allocated struct knc_ctx.  The constructors
+will return a pointer to an allocated
+.Ar knc_ctx .
+A
+.Ar knc_ctx
+can be assumed to be a pointer to an opaque data structure and so
+it is always valid to compare it to NULL.
+The constructors
 are defined as follows:
-.Bl -tag -width knc_initiateXXX
-.It Fn knc_initiate
-creates a KNC initatiator which is not attached to any file descriptors.
-.It Fn knc_init_fd
-creates a KNC initiator which is attached to the provided file descriptor.
-.It Fn knc_connect
+.Bl -tag -width XXXX
+.It Fn knc_ctx_init
+creates a KNC context with all default values and returns it.
+NULL will be returned if the structure cannot be allocated.
+.It Fn knc_connect ctx hostservice defservice defport opts
 connects to the host and service specified.
+.Fn knc_connect
+can also be called on an existing KNC context in which case, it merely
+makes the connexion but does not create a new context.
+The arguments to
+.Fn knc_connect
+are
+.Fa ctx
+which is an optional knc_ctx.
+If NULL is passed in then
+.Fn knc_connect
+will create a new context.
+.Fa hostservice
+is a string of the form
+.Oo service@ Oc Ns Ar host Ns Oo :port Oc .
+.Fa defservice
+is the default value which is used if the service is missing from
+.Fa hostservice .
+.Fa defport
+is the default value which is used if the port is missing from
+.Fa hostservice .
+If
+.Fa defport
+is NULL, then the default port will be the service.
+.Fa opts
+are flags to specify options to control the behaviour of
+.Fn knc_connect .
+No options are currently specified.
+NULL will be returned if memory cannot be allocated, in all other
+cases a
+.Ar knc_ctx
+will be returned.
+If any other error occurs,
+.Fn knc_error
+on the returned
+.Ar knc_ctx
+will return true.
 .El
 .Pp
-There are various functions that can be used to examine or alter the
-the current context:
-.Bl -tag -widtch knc_get_local_fdXXX
-.It Fn knc_get_net_fd
-returns the fd associated with the network side of the context or -1
-if no fd is associated.
-.It Fn knc_set_net_fd
+There are various functions that can be used to alter the context before
+the authentication exchange.
+It is not required call most of these functions as reasonable
+defaults have been set.
+In fact, it is only required to call
+.Fn knc_set_service ,
+.Fn knc_import_set_service ,
+or
+.Fn knc_import_set_hb_service
+when initiating a connexion when not using
+.Fn knc_connect .
+.Bl -tag -width XXXX
+.It Fn knc_set_cred ctx cred
+sets the credential which is used by either
+.Fn gss_init_sec_context
+or
+.Fn gss_accept_sec_context .
+The library will call
+.Fn gss_release_cred
+on the credential when the context is destroyed.
+.It Fn knc_set_service ctx gssname
+sets the service to which to authenticate.
+The library will call
+.Fn gss_release_name
+on the service when the context is destroyed.
+.It Fn knc_import_set_service ctx service nametype
+also sets the server to which to authenticate but it will also
+call
+.Fn gss_import_name
+on the supplied values.
+.It Fn knc_import_set_hb_service ctx hostservice defservice
+imports and sets a hostbased service.
+The format of
+.Ar hostservice
+is
+.Oo Ar service@ Oc Ns Ar host .
+.Ar service
+will be filled in with
+.Ar defservice
+if it is absent.
+.It Fn knc_set_cb ctx bindings
+sets the channel bindings.
+It is the caller's responsibility to do the memory management of the
+gss_channel_bindings_t which will need to exist over the life of the
+.Ar knc_ctx .
+.It Fn knc_set_req_mech ctx mech
+sets the requested GSS mechanism (only used by an initiator.)
+.It Fn knc_set_req_flags ctx flags
+sets the requested flags passed to
+.Fn gss_init_sec_context .
+.It Fn knc_set_time_req ctx time_req
+sets
+.Ar time_req
+which is passed to
+.Fn gss_init_sec_context .
+.It Fn knc_set_net_fd ctx fd
 sets the fd associated with the network side of the context.
-.It Fn knc_get_local_fd
-returns the fd associated with the local side of the context or -1
-if no fd is associated.
-.It Fn knc_get_local_fd
+.It Fn knc_set_local_fd ctx fd
 sets the fd associated with the local side of the context.
 .El
 .Pp
-After a KNC context has been constructed and properly set up as according
-to the above, there are two interfaces which can be used to move data
-through.
+When the necessary settings have been made, a call to either
+.Fn knc_initiate
+or
+.Fn knc_accept
+is required.
+At this point, the streams will need to communicate back and forth
+with the other side of the connexion.  In the simple case, one can use
+.Fn knc_authenticate
+to drive this process, however in more complicated cases, one can
+use the
+.Dq The More Complex Buffer Based Interface .
+.Pp
+After a the connexion has been successfully authenticated, the following
+functions can be used to query the connexion state:
+.Bl -tag -width XXXX
+.It Fn knc_is_authenticated ctx
+returns true if the connexion has been established.
+.It Fn knc_get_client
+returns the client who connected.
+.It Fn knc_get_ret_mech ctx
+returns the GSS mechanism returned by either
+.Fn gss_accept_sec_context
+or
+.Fn gss_init_sec_context .
+.It Fn knc_get_ret_flags ctx
+returns the flags
+.Po Ar ret_flags Pc
+returned from either
+.Fn gss_accept_sec_context
+or
+.Fn gss_init_sec_context .
+.It Fn knc_get_time_rec ctx
+returns the
+.Ar time_rec
+returned by either
+.Fn gss_accept_sec_context
+or
+.Fn gss_init_sec_context .
+.It Fn knc_get_deleg_cred
+returns the delegated credential returned by
+.Fn gss_accept_sec_context .
+The credential is freed by the library when the context is closed.
+.It Fn knc_get_net_fd ctx
+returns the fd associated with the network side of the context or -1
+if no fd is associated.
+.It Fn knc_get_local_fd ctx
+returns the fd associated with the local side of the context or -1
+if no fd is associated.
+.El
+.Pp
+After a KNC context has been constructed, properly set up, and
+authenticated as according to the above, there are two interfaces
+which can be used to move data through.
 The first, simpler interface requires that the remote end of the connexion
 has been associated with a file descriptor either via the constructor or
 later via
-.Fn knc_set_remote_fd .
+.Fn knc_set_net_fd .
 In this case, the following functions can be used:
-.Bl -tag -width knc_writeXXX
-.It Fn knc_is_established 
-returns true if the connexion has been established.
-.It Fn knc_read
+.Bl -tag -width XXXX
+.It Fn knc_read ctx buf len
 will read data from the object, causing data to be read from the network
 if necessary.
 .Fn knc_read
@@ -154,20 +331,28 @@ is designed to provide the same interface as
 .Xr read 2
 and as such it will return the number of bytes read, zero for EOF and
 -1 for errors.
-.It Fn knc_write
-will write data to the stream and flush the write to the network.
+.Fn knc_read
+is always a blocking interface and so it will always return at least
+one byte but it will return as soon as there are bytes available.
+.It Fn knc_write ctx buf len
+will write data to the stream.
 .Fn knc_write
-is designed to provide the same interface as
-.Xr read 2
+is designed to provide more or less the same interface as
+.Xr write 2
 and as such it will return the number of bytes written, zero for EOF and
 -1 for errors.
-.It Fn knc_close
-will close the file descriptor and free all memory.
+.Fn knc_write
+is always a blocking interface and so it will continue to try to send
+the data until the entire sending buffer has been sent.
+.It Fn knc_close ctx
+will close the connexion.
 .El
 .Pp
 For more complex usage, a slightly more complex interface is provided.
 This interface should be used if it is necessary to:
 .Bl -enum
+.It
+use an event driven programming model,
 .It
 use KNC's internal buffering to enhance performance,
 .It
@@ -179,22 +364,32 @@ layer KNC over another protocol.
 .El
 .Pp
 The functions are as follows:
-.Bl -tag -width knc_avail_bufXXX
-.It Fn knc_put_buf
+.Bl -tag -width XXXX
+.It Fn knc_put_buf ctx dir buf len
 will allocate and copy the provided buffer into the input side of
 the desired stream.
-.It Fn knc_get_ibuf
+.It Fn knc_put_ubuf ctx dir buf len callback cookie
+will put the provided buffer directly into the input side of
+the desired stream.
+When the contents of the buffer have been consumed,
+.Fn callback
+is called with
+.Ar buf
+and
+.Ar cookie
+as its arguments.
+.It Fn knc_get_ibuf ctx dir buf len
 will allocate and provide a pointer to a buffer in the input side of
 the specified stream, ensuring that the buffer is of at least the
 specified length.
 The size of the returned buffer will be returned and will generally
 exceed the specified size unless a memory allocation error is encountered
 in which case -1 is returned.
-.It Fn knc_get_obuf
+.It Fn knc_get_obuf ctx dir buf len
 will provide a pointer to the output buffer at the current location.
 The size of the output buffer is returned or -1 to indicate an error
 has occurred.
-.It Fn knc_get_obufv
+.It Fn knc_get_obufv ctx dir vec count
 will provide a
 .Pq Dv struct iovec
 and count representing the entirety
@@ -204,22 +399,58 @@ This function is designed to provide an interface to
 and thus save the multiple invocations of
 .Xr write 2
 which might be required to emit the data.
-.It Fn knc_drain_buf
-tells KNC that the output buffer in the specified direction has
+.It Fn knc_drain_buf ctx dir len
+tells KNC that the output buffer
+returned by either
+.Fn knc_get_obuf
+or
+.Fn knc_get_obufv
+in the specified direction has
 consumed the specified number of bytes.
-.It Fn knc_fill_buf
+.It Fn knc_fill_buf ctx dir len
 tells KNC that the input buffer in the specified direction has
 had the specified number of bytes written into it.
-.It Fn knc_fill
+.It Fn knc_fill ctx dir
 will call the read function pointer to retrieve input for the
 specified stream.
-.It Fn knc_flush
+At most one call to
+.Xr read 2
+will be made.
+.It Fn knc_flush ctx dir len
 will call the write function pointer to send output for the
 specified stream.
-.It Fn knc_avail_buf
+The first argument is the direction to flush, either
+.Ar KNC_DIR_RECV 
+or
+.Ar KNC_DIR_SEND .
+The second argument is the minimum length of the flush.
+If called with a minimum length of zero, a single
+.Xr write 2 ,
+will be attempted which will either block or not depending
+on the file descriptor flags.
+With a length longer than zero,
+.Xr write 2
+will be called in a loop until the required length has been
+written.
+A non-zero minimum length must not be specified for a non-blocking
+file descriptor.
+Regardless of the length, the call will return when the output buffer
+is empty and so a length of (size_t) -1 will cause the entire buffer
+to be written.
+.It Fn knc_avail_buf ctx dir
 returns the approximate amount of data in the specified stream.
+More precisely, the returned length will be the sum of the ciphertext
+and plaintext side of the stream but as encryption increases the size
+slightly, this number may represent neither the ciphertext size nor
+the plaintext size.
+It should therefore be used with a grain of salt.
 .El
 .Sh EXAMPLES
 XXXrcd: provide two simple examples of correctly using the library.
 .Sh SEE ALSO
+.Xr gssapi 3 ,
 .Xr knc 1 .
+.Sh BUGS
+It might be suggested or perhaps has even been suggested that
+.Do Kerberised Netcat Dc
+is a bit of a misnomer for a library that only uses GSSAPI.
