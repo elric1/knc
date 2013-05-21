@@ -81,6 +81,7 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
+	knc_set_local_fds(ctx, STDIN_FILENO, STDOUT_FILENO);
 //	knc_set_debug(ctx, 1);
 
 	for (;;) {
@@ -127,45 +128,14 @@ main(int argc, char **argv)
 		if (FD_ISSET(fd, &wr))
 			knc_flush(ctx, KNC_DIR_SEND, 0);
 
-		if (FD_ISSET(fd, &rd)) {
+		if (FD_ISSET(fd, &rd))
 			knc_fill(ctx, KNC_DIR_RECV);
-			// continue;
-		}
 
-		if (FD_ISSET(0, &rd)) {
-			ret = knc_get_ibuf(ctx, KNC_DIR_SEND, (void**)&buf,
-			    16384);
-			if (ret == -1) {
-				/* XXXrcd: error handling... */
-			}
+		if (FD_ISSET(STDIN_FILENO, &rd))
+			knc_fill(ctx, KNC_DIR_SEND);
 
-			ret = read(0, buf, ret);
-
-			if (ret == -1) {
-				/* XXXrcd: error handling! */
-				fprintf(stderr, "read: %s\n", strerror(errno));
-			}
-
-			knc_fill_buf(ctx, KNC_DIR_SEND, ret);
-		}
-
-		if (FD_ISSET(1, &wr)) {
-			struct iovec	*vec;
-			int		 count;
-
-			ret = knc_get_obufv(ctx, KNC_DIR_RECV, &vec, &count);
-
-			if (ret < 1)
-				continue;	/* XXXrcd: bad. */
-
-			ret = writev(1, vec, count);
-
-			if (ret == -1)
-				fprintf(stderr, "write: %s\n", strerror(errno));
-
-			if (ret > 0)
-				knc_drain_buf(ctx, KNC_DIR_RECV, ret);
-		}
+		if (FD_ISSET(STDOUT_FILENO, &wr))
+			knc_flush(ctx, KNC_DIR_RECV, 0);
 
 		knc_garbage_collect(ctx);
 	}

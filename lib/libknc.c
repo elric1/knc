@@ -97,8 +97,6 @@ struct knc_ctx {
 #define STATE_INIT	0x2
 #define STATE_SESSION	0x3
 #define STATE_COMMAND	0x4
-	int			 net_fd;
-	int			 local_fd;
 	int			 error;
 	int			 debug;
 #define KNC_ERROR_GSS	0x1
@@ -117,13 +115,17 @@ struct knc_ctx {
 	 * are not defined, they will not be executed.
 	 */
 
-	ssize_t	(*netread)(int, void *, size_t);
-	ssize_t	(*netwritev)(int, const struct iovec *, int);
-	int	(*netclose)(int);
+	int	  net_fd;
+	void	 *netcookie;
+	ssize_t	(*netread)(void *, void *, size_t);
+	ssize_t	(*netwritev)(void *, const struct iovec *, int);
+	int	(*netclose)(void *);
 
-	ssize_t	(*localread)(int, void *, size_t);
-	ssize_t	(*localwritev)(int, const struct iovec *, int);
-	int	(*localclose)(int);
+	int	  local_fd;
+	void	 *localcookie;
+	ssize_t	(*localread)(void *, void *, size_t);
+	ssize_t	(*localwritev)(void *, const struct iovec *, int);
+	int	(*localclose)(void *);
 };
 
 /* mmm, macros. */
@@ -1370,15 +1372,66 @@ knc_get_net_fd(knc_ctx ctx)
 	return ctx->net_fd;
 }
 
+struct fd_cookie {
+	int	rfd;
+	int	wfd;
+};
+
+static ssize_t
+fdread(void *cookie, void *buf, size_t len)
+{
+	int	fd = ((struct fd_cookie *)cookie)->rfd;
+
+	return read(fd, buf, len);
+}
+
+static ssize_t
+fdwritev(void *cookie, const struct iovec *iov, int iovcnt)
+{
+	int	fd = ((struct fd_cookie *)cookie)->wfd;
+
+	return writev(fd, iov, iovcnt);
+}
+
+static int
+fdclose(void *cookie)
+{
+	int	rfd = ((struct fd_cookie *)cookie)->rfd;
+	int	wfd = ((struct fd_cookie *)cookie)->wfd;
+
+	if (rfd != wfd)
+		close(wfd);
+
+	return close(rfd);
+}
+
+void
+knc_set_net_fds(knc_ctx ctx, int rfd, int wfd)
+{
+	struct fd_cookie	*cookie;
+
+	/* XXXrcd: should we look for existing read/writev/close? */
+
+	cookie = malloc(sizeof(*cookie));
+	/* XXXrcd: errors! */
+
+	cookie->rfd = rfd;
+	cookie->wfd = wfd;
+
+	ctx->netcookie = cookie;
+	ctx->netread   = fdread;
+	ctx->netwritev = fdwritev;
+	ctx->netclose  = fdclose;
+
+	if (rfd == wfd)
+		ctx->net_fd = rfd;
+}
+
 void
 knc_set_net_fd(knc_ctx ctx, int fd)
 {
 
-	ctx->netread   = read;
-	ctx->netwritev = writev;
-	ctx->netclose  = close;
-
-	ctx->net_fd = fd;
+	knc_set_net_fds(ctx, fd, fd);
 }
 
 int
@@ -1389,14 +1442,34 @@ knc_get_local_fd(knc_ctx ctx)
 }
 
 void
+knc_set_local_fds(knc_ctx ctx, int rfd, int wfd)
+{
+	struct fd_cookie	*cookie;
+
+	/* XXXrcd: should we look for existing read/writev/close? */
+
+	cookie = malloc(sizeof(*cookie));
+	/* XXXrcd: errors! */
+
+	cookie->rfd = rfd;
+	cookie->wfd = wfd;
+
+	ctx->localcookie = cookie;
+	ctx->localread   = fdread;
+	ctx->localwritev = fdwritev;
+	ctx->localclose  = fdclose;
+
+	if (rfd == wfd)
+		ctx->local_fd = rfd;
+	else
+		ctx->local_fd = -1;
+}
+
+void
 knc_set_local_fd(knc_ctx ctx, int fd)
 {
 
-	ctx->localread   = read;
-	ctx->localwritev = writev;
-	ctx->localclose  = close;
-
-	ctx->local_fd = fd;
+	knc_set_local_fds(ctx, fd, fd);
 }
 
 /*
@@ -1472,10 +1545,29 @@ out:
 int
 knc_fill(knc_ctx ctx, int dir)
 {
-	ssize_t	 ret;
-	void	*tmpbuf;
+	ssize_t	  ret;
+	void	 *tmpbuf;
+	int	(*process)(knc_ctx);	
+	ssize_t	(*ourread)(void *, void *, size_t);
+	void	 *ourcookie;
+
+	/*
+	 * We must be much more careful about when we process these
+	 * packets.  This is not good, yet.
+	 */
+	process   = knc_state_process;
+
+	if (dir == KNC_DIR_SEND) {
+		ourread   = ctx->localread;
+		ourcookie = ctx->localcookie;
+	} else {
+		ourread   = ctx->netread;
+		ourcookie = ctx->netcookie;
+	}
 
 	/* XXXrcd: deal properly with EOF */
+	/* XXXrcd: looping? */
+	/* XXXrcd: hmmm! */
 	if (ctx->net_fd == -1)
 		return -1;
 
@@ -1484,10 +1576,7 @@ knc_fill(knc_ctx ctx, int dir)
 
 	DEBUG(("knc_fill: about to read %zd bytes.\n", ret));
 
-	if (dir == KNC_DIR_RECV)
-		ret = (ctx->netread)(ctx->net_fd, tmpbuf, ret);
-	else
-		ret = (ctx->localread)(ctx->local_fd, tmpbuf, ret);
+	ret = ourread(ourcookie, tmpbuf, ret);
 
 	if (ret == -1) {
 		DEBUG(("read error: %s\n", strerror(errno)));
@@ -1512,6 +1601,7 @@ knc_fill(knc_ctx ctx, int dir)
 		 * explicitly recognise.
 		 */
 
+		/* XXXrcd: hmmm! */
 		ctx->net_fd = -1;
 		knc_syscall_error(ctx, "I/O", errno);
 
@@ -1529,7 +1619,7 @@ knc_fill(knc_ctx ctx, int dir)
 		knc_fill_buf(ctx, dir, ret);
 	}
 
-	return knc_state_process(ctx);
+	return process(ctx);
 }
 
 int
@@ -1539,20 +1629,34 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 	int		 iovcnt;
 	size_t		 completelen = 0;
 	ssize_t		 len;
+	int		(*process)(knc_ctx);	
+	ssize_t		(*ourwritev)(void *, const struct iovec *, int);
+	void		 *ourcookie;
+
+	if (dir == KNC_DIR_SEND) {
+		process   = knc_state_process_out;
+		ourwritev = ctx->netwritev;
+		ourcookie = ctx->netcookie;
+	} else {
+		process   = knc_state_process_in;
+		ourwritev = ctx->localwritev;
+		ourcookie = ctx->localcookie;
+	}
 
 	/*
 	 * XXXrcd: should we process in the loop?  I think that might
 	 *         very well be a good plan, innit?
 	 */
-	knc_state_process_out(ctx);
+
+	process(ctx);
 
 	for (;;) {
-		len = knc_get_obufv(ctx, KNC_DIR_SEND, &vec, &iovcnt);
+		len = knc_get_obufv(ctx, dir, &vec, &iovcnt);
 		if (len <= 0)
 			break;
 		DEBUG(("knc_flush: about to write %zu bytes.\n", len));
 
-		len = (ctx->netwritev)(ctx->net_fd, vec, iovcnt);
+		len = ourwritev(ourcookie, vec, iovcnt);
 
 		if (len < 0) {
 			DEBUG(("write error: %s\n", strerror(errno)));
@@ -1583,7 +1687,7 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 		}
 
 		DEBUG(("knc_flush: wrote %zd bytes.\n", len));
-		knc_drain_buf(ctx, KNC_DIR_SEND, len);
+		knc_drain_buf(ctx, dir, len);
 
 		completelen += len;
 		if (completelen > flushlen)
