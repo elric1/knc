@@ -299,6 +299,7 @@ free_gssbuf(void *buf, void *cookie)
 	OM_uint32	min;
 
 	maj = gss_release_buffer(&min, cookie);
+	free(cookie);
 }
 
 static int
