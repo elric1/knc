@@ -98,7 +98,7 @@ int		knc_put_ubuf(knc_ctx, int, void *, size_t,
 int		knc_put_mmapbuf(knc_ctx, int, size_t, int, int, off_t);
 int		knc_get_ibuf(knc_ctx, int, void **, size_t);
 int		knc_get_obuf(knc_ctx, int, void **, size_t);
-int		knc_get_obufv(knc_ctx, int dir, struct iovec **, size_t *);
+int		knc_get_obufv(knc_ctx, int dir, struct iovec **, int *);
 int		knc_drain_buf(knc_ctx, int, int);
 int		knc_fill_buf(knc_ctx, int, int);
 int		knc_pending(knc_ctx, int);

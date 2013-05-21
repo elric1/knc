@@ -151,7 +151,7 @@ main(int argc, char **argv)
 
 		if (FD_ISSET(1, &wr)) {
 			struct iovec	*vec;
-			size_t		 count;
+			int		 count;
 
 			ret = knc_get_obufv(ctx, KNC_DIR_RECV, &vec, &count);
 

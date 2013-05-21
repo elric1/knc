@@ -163,7 +163,7 @@ static int	knc_put_stream(struct knc_stream *, const void *, size_t);
 static int	knc_put_stream_gssbuf(struct knc_stream *, gss_buffer_t);
 static int	knc_get_istream(struct knc_stream *, void **, size_t);
 static ssize_t	knc_get_ostream(struct knc_stream *, void **, size_t);
-static ssize_t	knc_get_ostreamv(struct knc_stream *, struct iovec **, size_t *);
+static ssize_t	knc_get_ostreamv(struct knc_stream *, struct iovec **, int *);
 static int	knc_stream_put_trash(struct knc_stream *, void *);
 static ssize_t	knc_get_ostream_contig(struct knc_stream *, void **, size_t);
 static ssize_t	knc_stream_drain(struct knc_stream *, size_t);
@@ -405,7 +405,7 @@ knc_get_ostream(struct knc_stream *s, void **buf, size_t len)
 }
 
 static ssize_t
-knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, size_t *count)
+knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 {
 	struct knc_stream_bit	*cur;
 	size_t			 i;
@@ -1262,7 +1262,7 @@ knc_get_obuf(knc_ctx ctx, int dir, void **buf, size_t len)
 }
 
 int
-knc_get_obufv(knc_ctx ctx, int dir, struct iovec **vec, size_t *count)
+knc_get_obufv(knc_ctx ctx, int dir, struct iovec **vec, int *count)
 {
 
 	return knc_get_ostreamv(knc_find_buf(ctx,KNC_SIDE_OUT,dir), vec, count);
@@ -1532,61 +1532,27 @@ knc_fill(knc_ctx ctx, int dir)
 	return knc_state_process(ctx);
 }
 
-/* XXXrcd: USE THE WRITEV INTERFACE, IT IS MORE EFFICIENT */
-#if 0
-int
-knc_flush(knc_ctx ctx, int dir)
-{
-	struct iovec	*vec;
-	int		 count;
-	int		 len;
-	int		 ret;
-
-	len = knc_get_obufv(ctx, dir, &vec, &count);
-
-	DEBUG(("knc_flush: knc_get_obufv returned %d bytes.\n", len));
-
-	/* XXXrcd: deal with errors */
-	if (len < 1)
-		return 0;
-
-	ret = (ctx->netwritev)(ctx->net_fd, vec, count);
-
-	/* XXXrcd: errors */
-
-	DEBUG(("knc_flush: wrote %d bytes, attempted %d bytes.\n",
-	    ret, len));
-
-	if (ret < 1)
-		return ret;
-
-	knc_drain_buf(ctx, dir, ret);
-}
-
-#else
 int
 knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 {
+	struct iovec	*vec;
+	int		 iovcnt;
 	size_t		 completelen = 0;
 	ssize_t		 len;
-	void		*buf;
 
+	/*
+	 * XXXrcd: should we process in the loop?  I think that might
+	 *         very well be a good plan, innit?
+	 */
 	knc_state_process_out(ctx);
 
 	for (;;) {
-		len = knc_get_obuf(ctx, KNC_DIR_SEND, &buf, 16384);
+		len = knc_get_obufv(ctx, KNC_DIR_SEND, &vec, &iovcnt);
 		if (len <= 0)
 			break;
 		DEBUG(("knc_flush: about to write %zu bytes.\n", len));
 
-#if 0
-		vec[0].iov_base = buf;
-		vec[0].iov_len  = len;
-
-		len = (ctx->netwritev)(ctx->net_fd, vec, 1);
-#else
-		len = write(ctx->net_fd, buf, len);
-#endif
+		len = (ctx->netwritev)(ctx->net_fd, vec, iovcnt);
 
 		if (len < 0) {
 			DEBUG(("write error: %s\n", strerror(errno)));
@@ -1628,7 +1594,6 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 
 	return 0;
 }
-#endif
 
 #if 0	/* XXXrcd: complete this */
 void
