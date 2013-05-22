@@ -23,6 +23,8 @@
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <poll.h>
+
 #include <gssapi/gssapi.h>
 
 /*
@@ -31,6 +33,8 @@
 
 struct knc_ctx;
 typedef struct knc_ctx *knc_ctx;
+
+typedef void (*knc_callback)(knc_ctx);
 
 /*
  * The various constructors:
@@ -57,10 +61,18 @@ gss_name_t	knc_get_client(knc_ctx);
 gss_cred_id_t	knc_get_deleg_cred(knc_ctx);
 void		knc_set_local_fds(knc_ctx, int, int);
 void		knc_set_local_fd(knc_ctx, int);
-int		knc_get_local_fd(knc_ctx);
+int		knc_get_local_rfd(knc_ctx);
+int		knc_get_local_wfd(knc_ctx);
 void		knc_set_net_fds(knc_ctx, int, int);
 void		knc_set_net_fd(knc_ctx, int);
-int		knc_get_net_fd(knc_ctx);
+int		knc_get_net_rfd(knc_ctx);
+int		knc_get_net_wfd(knc_ctx);
+nfds_t		knc_get_pollfds(knc_ctx, struct pollfd *, knc_callback *,
+				nfds_t);
+void		knc_service_pollfds(knc_ctx, struct pollfd *, knc_callback *,
+				    nfds_t);
+int		knc_net_is_open(knc_ctx);
+int		knc_local_is_open(knc_ctx);
 void		knc_set_debug(knc_ctx, int);
 
 /* Error handling */
@@ -103,4 +115,4 @@ int		knc_get_obuf(knc_ctx, int, void **, size_t);
 int		knc_get_obufv(knc_ctx, int dir, struct iovec **, int *);
 int		knc_drain_buf(knc_ctx, int, int);
 int		knc_fill_buf(knc_ctx, int, int);
-int		knc_pending(knc_ctx, int);
+size_t		knc_pending(knc_ctx, int);

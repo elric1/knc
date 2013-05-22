@@ -23,43 +23,11 @@
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-
-
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <sys/uio.h>
-#include <sys/un.h>
-#include <sys/wait.h>
-
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
 #include <errno.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <netdb.h>
-#include <signal.h>
-#include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <strings.h>
-#include <syslog.h>
-#include <time.h>
-#include <unistd.h>
-
-
-#include <sys/select.h>
-
-#include <errno.h>
 #include <stdio.h>
 
 #include <libknc.h>
-
-#define READBUFSIZ	(256 * 1024)
-#define WRITEBUFSIZ	(256 * 1024)
 
 int
 main(int argc, char **argv)
@@ -85,57 +53,26 @@ main(int argc, char **argv)
 //	knc_set_debug(ctx, 1);
 
 	for (;;) {
-		fd_set	rd, wr;
-		int	fd;
+		knc_callback	cbs[4];
+		struct pollfd	fds[4];
+		nfds_t		nfds;
+		size_t		i;
 
 		if (knc_error(ctx))
 			break;
 
-		fd = knc_get_net_fd(ctx);
-
-		if (fd == -1)
+		if (!knc_net_is_open(ctx) || !knc_local_is_open(ctx))
 			break;
 
-		/* XXXrcd: Set non-blocking? */
+		nfds = knc_get_pollfds(ctx, fds, cbs, 4);
 
-		FD_ZERO(&rd);
-		FD_ZERO(&wr);
-
-		/*
-		 * For the write buffers, we only check for select(2)ability
-		 * if we have pending data.  For incoming data, we expect it
-		 * at any time.
-		 */
-
-		if (knc_pending(ctx, KNC_DIR_SEND) < WRITEBUFSIZ)
-			FD_SET(0, &rd);
-
-		if (fd != -1 && knc_pending(ctx, KNC_DIR_RECV) < READBUFSIZ)
-			FD_SET(fd, &rd);
-
-		if (knc_pending(ctx, KNC_DIR_RECV) > 0)
-			FD_SET(1, &wr);
-
-		if (fd != -1 && knc_pending(ctx, KNC_DIR_SEND) > 0)
-			FD_SET(fd, &wr);
-
-		ret = select(fd+1, &rd, &wr, NULL, NULL);
+		ret = poll(fds, nfds, 0);
 		if (ret < 0) {
-			fprintf(stderr, "select: %s\n", strerror(errno));
+			fprintf(stderr, "poll: %s\n", strerror(errno));
 			break;
 		}
 
-		if (FD_ISSET(fd, &wr))
-			knc_flush(ctx, KNC_DIR_SEND, 0);
-
-		if (FD_ISSET(fd, &rd))
-			knc_fill(ctx, KNC_DIR_RECV);
-
-		if (FD_ISSET(STDIN_FILENO, &rd))
-			knc_fill(ctx, KNC_DIR_SEND);
-
-		if (FD_ISSET(STDOUT_FILENO, &wr))
-			knc_flush(ctx, KNC_DIR_RECV, 0);
+		knc_service_pollfds(ctx, fds, cbs, nfds);
 
 		knc_garbage_collect(ctx);
 	}

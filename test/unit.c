@@ -152,7 +152,8 @@ knc_loop(knc_ctx ctx, int server)
 	int	 valsend = 0;
 	char	*buf;
 
-	fd = knc_get_net_fd(ctx);
+	/* XXXrcd: we assume that net_rfd == net_wfd, bad. */
+	fd = knc_get_net_rfd(ctx);
 
 	/* XXXrcd: Set non-blocking? */
 	ret = fcntl(fd, F_SETFL, O_NONBLOCK);
@@ -169,7 +170,8 @@ knc_loop(knc_ctx ctx, int server)
 		if (knc_error(ctx))
 			break;
 
-		if (knc_get_net_fd(ctx) == -1) {
+		/* XXXrcd: we assume that net_rfd == net_wfd, bad. */
+		if (knc_get_net_rfd(ctx) == -1) {
 			fprintf(stderr, "Other end unexpectedly closed.\n");
 			break;
 		}

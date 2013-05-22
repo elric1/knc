@@ -104,6 +104,9 @@ struct knc_ctx {
 #define KNC_ERROR_RST	0x3
 #define KNC_ERROR_PIPE	0x4
 	char			*errstr;
+
+	size_t			 recvinbufsiz;
+	size_t			 sendinbufsiz;
 	struct knc_stream	 raw_recv;
 	struct knc_stream	 cooked_recv;
 	struct knc_stream	 raw_send;
@@ -115,17 +118,25 @@ struct knc_ctx {
 	 * are not defined, they will not be executed.
 	 */
 
-	int	  net_fd;
+	int	  net_uses_fd;
+	int	  net_is_open;
 	void	 *netcookie;
 	ssize_t	(*netread)(void *, void *, size_t);
 	ssize_t	(*netwritev)(void *, const struct iovec *, int);
 	int	(*netclose)(void *);
 
-	int	  local_fd;
+	int	  local_uses_fd;
+	int	  local_is_open;
 	void	 *localcookie;
 	ssize_t	(*localread)(void *, void *, size_t);
 	ssize_t	(*localwritev)(void *, const struct iovec *, int);
 	int	(*localclose)(void *);
+};
+
+struct fd_cookie {
+	int	mine;
+	int	rfd;
+	int	wfd;
 };
 
 /* mmm, macros. */
@@ -686,10 +697,10 @@ knc_ctx_init(void)
 	ret->req_flags  = GSS_C_MUTUAL_FLAG | GSS_C_SEQUENCE_FLAG;
 	ret->deleg_cred = GSS_C_NO_CREDENTIAL;
 
-	ret->net_fd	= -1;
-	ret->local_fd   = -1;
-
 	ret->open = OPEN_READ|OPEN_WRITE;
+
+	ret->recvinbufsiz = 16384;
+	ret->sendinbufsiz = 16384;
 
 	return ret;
 }
@@ -724,6 +735,12 @@ knc_ctx_close(knc_ctx ctx)
 		/* XXXrcd: hmmm, caller deals with this? */
 	}
 #endif
+
+	if (ctx->net_is_open && ctx->netclose)
+		(ctx->netclose)(ctx->netcookie);
+
+	if (ctx->local_is_open && ctx->localclose)
+		(ctx->localclose)(ctx->localcookie);
 
 	/* XXXrcd: memory leaks?  */
 
@@ -1284,7 +1301,7 @@ knc_fill_buf(knc_ctx ctx, int dir, int len)
 	return knc_stream_fill(knc_find_buf(ctx, KNC_SIDE_IN, dir), len);
 }
 
-int
+size_t
 knc_pending(knc_ctx ctx, int dir)
 {
 	int	ret;
@@ -1365,18 +1382,6 @@ knc_garbage_collect(knc_ctx ctx)
 	knc_stream_garbage_collect(&ctx->cooked_send);
 }
 
-int
-knc_get_net_fd(knc_ctx ctx)
-{
-
-	return ctx->net_fd;
-}
-
-struct fd_cookie {
-	int	rfd;
-	int	wfd;
-};
-
 static ssize_t
 fdread(void *cookie, void *buf, size_t len)
 {
@@ -1396,8 +1401,12 @@ fdwritev(void *cookie, const struct iovec *iov, int iovcnt)
 static int
 fdclose(void *cookie)
 {
-	int	rfd = ((struct fd_cookie *)cookie)->rfd;
-	int	wfd = ((struct fd_cookie *)cookie)->wfd;
+	struct fd_cookie	*fdc = cookie;
+	int			 rfd = fdc->rfd;
+	int			 wfd = fdc->wfd;
+
+	if (!fdc->mine)
+		return 0;
 
 	if (rfd != wfd)
 		close(wfd);
@@ -1415,16 +1424,17 @@ knc_set_net_fds(knc_ctx ctx, int rfd, int wfd)
 	cookie = malloc(sizeof(*cookie));
 	/* XXXrcd: errors! */
 
-	cookie->rfd = rfd;
-	cookie->wfd = wfd;
+	cookie->mine = 0;
+	cookie->rfd  = rfd;
+	cookie->wfd  = wfd;
+
+	ctx->net_uses_fd = 1;
+	ctx->net_is_open = 1;
 
 	ctx->netcookie = cookie;
 	ctx->netread   = fdread;
 	ctx->netwritev = fdwritev;
 	ctx->netclose  = fdclose;
-
-	if (rfd == wfd)
-		ctx->net_fd = rfd;
 }
 
 void
@@ -1435,10 +1445,30 @@ knc_set_net_fd(knc_ctx ctx, int fd)
 }
 
 int
-knc_get_local_fd(knc_ctx ctx)
+knc_get_net_rfd(knc_ctx ctx)
 {
 
-	return ctx->local_fd;
+	if (ctx->net_uses_fd)
+		return ((struct fd_cookie *)ctx->netcookie)->rfd;
+
+	return -1;
+}
+
+int
+knc_get_net_wfd(knc_ctx ctx)
+{
+
+	if (ctx->net_uses_fd)
+		return ((struct fd_cookie *)ctx->netcookie)->wfd;
+
+	return -1;
+}
+
+int
+knc_net_is_open(knc_ctx ctx)
+{
+
+	return ctx->net_uses_fd && ctx->net_is_open;
 }
 
 void
@@ -1451,18 +1481,17 @@ knc_set_local_fds(knc_ctx ctx, int rfd, int wfd)
 	cookie = malloc(sizeof(*cookie));
 	/* XXXrcd: errors! */
 
-	cookie->rfd = rfd;
-	cookie->wfd = wfd;
+	cookie->mine = 0;
+	cookie->rfd  = rfd;
+	cookie->wfd  = wfd;
+
+	ctx->local_uses_fd = 1;
+	ctx->local_is_open = 1;
 
 	ctx->localcookie = cookie;
 	ctx->localread   = fdread;
 	ctx->localwritev = fdwritev;
 	ctx->localclose  = fdclose;
-
-	if (rfd == wfd)
-		ctx->local_fd = rfd;
-	else
-		ctx->local_fd = -1;
 }
 
 void
@@ -1470,6 +1499,102 @@ knc_set_local_fd(knc_ctx ctx, int fd)
 {
 
 	knc_set_local_fds(ctx, fd, fd);
+}
+
+int
+knc_get_local_rfd(knc_ctx ctx)
+{
+
+	if (ctx->local_uses_fd)
+		return ((struct fd_cookie *)ctx->localcookie)->rfd;
+
+	return -1;
+}
+
+int
+knc_get_local_wfd(knc_ctx ctx)
+{
+
+	if (ctx->local_uses_fd)
+		return ((struct fd_cookie *)ctx->localcookie)->wfd;
+
+	return -1;
+}
+
+int
+knc_local_is_open(knc_ctx ctx)
+{
+
+	return ctx->local_uses_fd && ctx->local_is_open;
+}
+
+static void _fill_recv(knc_ctx ctx)  { knc_fill(ctx, KNC_DIR_RECV); }
+static void _fill_send(knc_ctx ctx)  { knc_fill(ctx, KNC_DIR_SEND); }
+static void _flush_send(knc_ctx ctx) { knc_flush(ctx, KNC_DIR_SEND, 0); }
+static void _flush_recv(knc_ctx ctx) { knc_flush(ctx, KNC_DIR_RECV, 0); }
+
+/* XXXrcd: bad macro, should be a parameter, eh? */
+#define READBUFSIZEROOBOB	16384
+
+nfds_t
+knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs, nfds_t nfds)
+{
+	nfds_t	i = 0;
+
+	if (ctx->net_uses_fd && ctx->net_is_open) {
+		/* XXXrcd: check fd validity? */
+		if (knc_pending(ctx, KNC_DIR_RECV) < ctx->recvinbufsiz) {
+			cbs[i]		= _fill_recv;
+			fds[i].fd	= knc_get_net_rfd(ctx);
+			fds[i++].events	= POLLIN;
+			if (i >= nfds)
+				return -1;
+		}
+
+		/* XXXrcd: check fd validity? */
+		if (knc_pending(ctx, KNC_DIR_SEND) > 0) {
+			cbs[i]		= _flush_send;
+			fds[i].fd	= knc_get_net_wfd(ctx);
+			fds[i++].events = POLLOUT;
+			if (i >= nfds)
+				return -1;
+		}
+	}
+
+	if (ctx->local_uses_fd && ctx->local_is_open) {
+		/* XXXrcd: check fd validity? */
+		if (knc_pending(ctx, KNC_DIR_SEND) < ctx->sendinbufsiz) {
+			cbs[i]		= _fill_send;
+			fds[i].fd	 = knc_get_local_rfd(ctx);
+			fds[i++].events	 = POLLIN;
+			if (i >= nfds)
+				return -1;
+		}
+
+		/* XXXrcd: check fd validity? */
+		if (knc_pending(ctx, KNC_DIR_RECV) > 0) {
+			cbs[i]		= _flush_recv;
+			fds[i].fd	 = knc_get_local_wfd(ctx);
+			fds[i++].events	 = POLLOUT;
+		}
+	}
+
+	return i;
+}
+
+void
+knc_service_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs,
+		    nfds_t nfds)
+{
+	size_t	i;
+
+	for (i=0; i < nfds; i++) {
+		short	revents = fds[i].revents;
+
+		if (revents & (POLLIN|POLLOUT))
+			cbs[i](ctx);
+
+	}
 }
 
 /*
@@ -1535,6 +1660,7 @@ knc_connect(knc_ctx ctx, const char *hostservice,
 	}
 
 	knc_set_net_fd(ctx, fd);
+	((struct fd_cookie *)ctx->netcookie)->mine = 1;
 	knc_initiate(ctx);
 
 out:
@@ -1550,6 +1676,7 @@ knc_fill(knc_ctx ctx, int dir)
 	int	(*process)(knc_ctx);	
 	ssize_t	(*ourread)(void *, void *, size_t);
 	void	 *ourcookie;
+	int	 *is_open;
 
 	/*
 	 * We must be much more careful about when we process these
@@ -1558,17 +1685,20 @@ knc_fill(knc_ctx ctx, int dir)
 	process   = knc_state_process;
 
 	if (dir == KNC_DIR_SEND) {
-		ourread   = ctx->localread;
-		ourcookie = ctx->localcookie;
+		ourread   =  ctx->localread;
+		ourcookie =  ctx->localcookie;
+		is_open   = &ctx->local_is_open;
 	} else {
 		ourread   = ctx->netread;
 		ourcookie = ctx->netcookie;
+		is_open   = &ctx->net_is_open;
 	}
 
 	/* XXXrcd: deal properly with EOF */
 	/* XXXrcd: looping? */
 	/* XXXrcd: hmmm! */
-	if (ctx->net_fd == -1)
+
+	if (!ourread || !ourcookie)
 		return -1;
 
 	/* XXXrcd: hardcoded constant */
@@ -1602,16 +1732,16 @@ knc_fill(knc_ctx ctx, int dir)
 		 */
 
 		/* XXXrcd: hmmm! */
-		ctx->net_fd = -1;
+		/* XXXrcd: need to do something a little more than this... */
 		knc_syscall_error(ctx, "I/O", errno);
 
 		return -1;
 	}
 
 	if (ret == 0) {
-		/* XXXrcd: EOF, hmmmm.... */
+		*is_open = 0;
 		DEBUG(("knc_fill: got EOF\n"));
-		ctx->net_fd = -1;
+		/* XXXrcd: must handle this case... */
 	}
 
 	if (ret > 0) {
@@ -1680,7 +1810,7 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 			 * explicitly recognise.
 			 */
 
-			ctx->net_fd = -1;
+			/* XXXrcd: probably should do a little more here... */
 			knc_syscall_error(ctx, "I/O", errno);
 
 			return -1;

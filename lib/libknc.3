@@ -73,11 +73,19 @@
 .Ft gss_cred_id_t
 .Fn knc_get_deleg_cred "knc_ctx ctx"
 .Ft int
-.Fn knc_get_net_fd "knc_ctx ctx"
+.Fn knc_get_net_rfd "knc_ctx ctx"
+.Ft int
+.Fn knc_get_net_wfd "knc_ctx ctx"
+.Ft void
+.Fn knc_set_net_fds "knc_ctx ctx" "int rfd" "int wfd"
 .Ft void
 .Fn knc_set_net_fd "knc_ctx ctx" "int fd"
 .Ft int
-.Fn knc_get_local_fd "knc_ctx ctx"
+.Fn knc_get_local_rfd "knc_ctx ctx"
+.Ft int
+.Fn knc_get_local_wfd "knc_ctx ctx"
+.Ft void
+.Fn knc_set_local_fds "knc_ctx ctx" "int rfd" "int wfd"
 .Ft void
 .Fn knc_set_local_fd "knc_ctx ctx" "int fd"
 .Ss Starting the Connexion
@@ -118,8 +126,18 @@
 .Fn knc_fill "knc_ctx ctx" "int dir"
 .Ft int
 .Fn knc_flush "knc_ctx ctx" "int dir" "size_t len"
-.Ft int
-.Fn knc_avail_buf "knc_ctx ctx" "int dir"
+.Ft size_t
+.Fn knc_pending "knc_ctx ctx" "int dir"
+.Ft nfds_t
+.Fo knc_get_pollfds
+.Fa "knc_ctx ctx" "struct pollfd *fds"
+.Fa "knc_callback *cbs" "nfds_t nfds"
+.Fc
+.Ft void
+.Fo knc_service_pollfds
+.Fa "knc_ctx ctx" "struct pollfd *fds"
+.Fa "knc_callback *cbs" "nfds_t nfds"
+.Fc
 .Ss Error handling
 .Ft int
 .Fn knc_error "knc_ctx ctx"
@@ -262,10 +280,30 @@ sets
 .Ar time_req
 which is passed to
 .Fn gss_init_sec_context .
+.It Fn knc_set_net_fds ctx rfd wfd
+sets the read and write file descriptors associated with the
+network side of the context.
+It will also set the functions used to read and write from the
+network side to internally defined functions that use
+.Xr read
+and
+.Xr writev .
+The file descriptor will not be closed when the context is destroyed.
 .It Fn knc_set_net_fd ctx fd
-sets the fd associated with the network side of the context.
+calls
+.Fn knc_set_net_fds ctx fd fd .
+.It Fn knc_set_local_fds ctx rfd wfd
+sets the read and write file descriptors associated with the
+local side of the context.
+It will also set the functions used to read and write from the
+local side to internally defined functions that use
+.Xr read
+and
+.Xr writev .
+The file descriptor will not be closed when the context is destroyed.
 .It Fn knc_set_local_fd ctx fd
-sets the fd associated with the local side of the context.
+calls
+.Fn knc_set_local_fds ctx fd fd .
 .El
 .Pp
 When the necessary settings have been made, a call to either
@@ -310,10 +348,16 @@ or
 returns the delegated credential returned by
 .Fn gss_accept_sec_context .
 The credential is freed by the library when the context is closed.
-.It Fn knc_get_net_fd ctx
-returns the fd associated with the network side of the context or -1
+.It Fn knc_get_net_rfd ctx
+returns the read fd associated with the network side of the context or -1
 if no fd is associated.
-.It Fn knc_get_local_fd ctx
+.It Fn knc_get_net_wfd ctx
+returns the write fd associated with the network side of the context or -1
+if no fd is associated.
+.It Fn knc_get_local_rfd ctx
+returns the fd associated with the local side of the context or -1
+if no fd is associated.
+.It Fn knc_get_local_wfd ctx
 returns the fd associated with the local side of the context or -1
 if no fd is associated.
 .El
@@ -452,13 +496,58 @@ file descriptor.
 Regardless of the length, the call will return when the output buffer
 is empty and so a length of (size_t) -1 will cause the entire buffer
 to be written.
-.It Fn knc_avail_buf ctx dir
+.It Fn knc_pending ctx dir
 returns the approximate amount of data in the specified stream.
 More precisely, the returned length will be the sum of the ciphertext
 and plaintext side of the stream but as encryption increases the size
 slightly, this number may represent neither the ciphertext size nor
 the plaintext size.
 It should therefore be used with a grain of salt.
+.It Fn knc_get_pollfds ctx fds cbs nfds
+fills out
+.Ar fds
+and
+.Ar cbs .
+.Ar fds
+should be an array of
+.Ar "struct pollfd"
+of length
+.Ar nfds .
+.Ar cbs
+should be an array of
+.Ar knc_callback
+of the same length.
+.Fn knc_get_pollfds
+will fill out
+.Ar fds
+in a way suitable to be passed to
+.Xr poll 2 .
+Upon the return of
+.Xr poll 2 ,
+for each index in
+.Ar fds
+which indicates readiness, the corresponding
+.Ar knc_callback
+defined in
+.Ar cbs
+at the same index should be called.
+.Fn knc_get_pollfds
+returns the number of entries in
+.Ar fds
+and
+.Ar cbs
+that are filled in.
+Entries that are not filled in are not touched and will therefore likely
+contain garbage.
+The callbacks should be called for
+.Ar "struct pollfd"
+entries showing an event.
+Or
+.Fn knc_service_pollfds
+should be called.
+.Fn knc_service_pollfds ctx fds cbs nfds
+will service the data structures returned from
+.Fn knc_get_pollfds .
 .El
 .Sh EXAMPLES
 XXXrcd: provide two simple examples of correctly using the library.
