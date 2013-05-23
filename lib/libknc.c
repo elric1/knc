@@ -77,7 +77,7 @@ struct knc_stream {
 };
 
 struct knc_ctx {
-	int			 opts;
+	/* GSS input/output data */
 	gss_ctx_id_t		 gssctx;
 	gss_cred_id_t		 cred;		/* both */
 	gss_channel_bindings_t	 cb;		/* both */
@@ -90,6 +90,10 @@ struct knc_ctx {
 	OM_uint32		 time_req;	/* initiator */
 	OM_uint32		 time_rec;	/* both */
 	gss_cred_id_t		 deleg_cred;	/* acceptor */
+
+	/* Connexion state data */
+	int			 opts;
+
 	int			 open;
 #define OPEN_READ	0x10
 #define OPEN_WRITE	0x20
@@ -1770,11 +1774,12 @@ out:
 int
 knc_fill(knc_ctx ctx, int dir)
 {
-	ssize_t	  ret;
+	ssize_t	  len;
 	void	 *tmpbuf;
 	ssize_t	(*ourread)(void *, void *, size_t);
 	void	 *ourcookie;
 	int	 *is_open;
+	int	  ret;
 
 	if (dir == KNC_DIR_SEND) {
 		ourread   =  ctx->localread;
@@ -1791,53 +1796,45 @@ knc_fill(knc_ctx ctx, int dir)
 	/* XXXrcd: hmmm! */
 
 	if (!ourread || !ourcookie)
-		return -1;
+		return EINVAL;
 
 	/* XXXrcd: hardcoded constant */
-	ret = knc_get_ibuf(ctx, dir, &tmpbuf, 128 * 1024);
+	len = knc_get_ibuf(ctx, dir, &tmpbuf, 128 * 1024);
 
-	DEBUG(("knc_fill: about to read %zd bytes.\n", ret));
+	DEBUG(("knc_fill: about to read %zd bytes.\n", len));
 
-	ret = ourread(ourcookie, tmpbuf, ret);
+	ret = ourread(ourcookie, tmpbuf, len);
 
 	if (ret == -1) {
 		DEBUG(("read error: %s\n", strerror(errno)));
-		/* XXXrcd: errors... */
 
-		if (errno == EINTR || errno == EAGAIN) {
-			return -1;
+		switch (errno) {
+		case EINTR:
+		case EAGAIN:
+#if EAGAIN != EWOULDBLOCK
+		case EWOULDBLOCK:
+#endif
+			return errno;
+
+		default:
+			/* XXXrcd: hmmm! more than this, I think. */
+			knc_syscall_error(ctx, "reading", errno);
+			return errno;
 		}
-
-		/*
-		 * XXXrcd: Other possible errors:
-		 *
-		 *	EPIPE
-		 *	ECONNRESET
-		 *	ENETRESET
-		 *	ECONNABORTED
-		 *	ENOBUFS
-		 *
-		 * These should be considered.
-		 *
-		 * For now, we simply bail on anything that we do not
-		 * explicitly recognise.
-		 */
-
-		/* XXXrcd: hmmm! */
-		/* XXXrcd: need to do something a little more than this... */
-		knc_syscall_error(ctx, "I/O", errno);
-
-		return -1;
 	}
 
 	if (ret == 0) {
 		*is_open = 0;
 		DEBUG(("knc_fill: got EOF\n"));
-		/* XXXrcd: must handle this case... */
+		/*
+		 * XXXrcd: we may very well call this an error because
+		 *         we are supposed to see an appropriate command
+		 *         packet for close.
+		 */
 	}
 
 	if (ret > 0) {
-		DEBUG(("Read %zd bytes\n", ret));
+		DEBUG(("Read %d bytes\n", ret));
 		knc_fill_buf(ctx, dir, ret);
 	}
 
@@ -1946,15 +1943,37 @@ knc_read(knc_ctx ctx, void *buf, size_t len)
 {
 	ssize_t	 ret;
 	void	*tmpbuf;
+	int	 err;
 
 	DEBUG(("knc_read: about to read.\n"));
 
-	knc_fill(ctx, KNC_DIR_RECV);
+	/*
+	 * We attempt to return data before we initiate a
+	 * read because the read may block and we shouldn't
+	 * block if there is data available to return.
+	 */
 
 	ret = knc_get_obuf(ctx, KNC_DIR_RECV, &tmpbuf, len);
 	if (ret > 0) {
 		memcpy(buf, tmpbuf, ret);
 		knc_drain_buf(ctx, KNC_DIR_RECV, ret);
+		return ret;
+	}
+
+	for (;;) {
+		err = knc_fill(ctx, KNC_DIR_RECV);
+
+		ret = knc_get_obuf(ctx, KNC_DIR_RECV, &tmpbuf, len);
+		if (ret > 0) {
+			memcpy(buf, tmpbuf, ret);
+			knc_drain_buf(ctx, KNC_DIR_RECV, ret);
+			break;
+		}
+
+		if (ctx->opts & KNC_SOCK_NONBLOCK || err == EINTR) {
+			errno = err;
+			return -1;
+		}
 	}
 
 	return ret;
