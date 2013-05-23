@@ -29,5 +29,6 @@ Makefile.in
 /ltmain.sh
 /missing
 /stamp-h1
+/test/servefile
 /test/testknc
 /test/unit
