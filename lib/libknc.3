@@ -128,6 +128,10 @@
 .Fn knc_flush "knc_ctx ctx" "int dir" "size_t len"
 .Ft size_t
 .Fn knc_pending "knc_ctx ctx" "int dir"
+.Ft int
+.Fn knc_need_input "knc_ctx ctx" "int dir"
+.Ft int
+.Fn knc_can_output "knc_ctx ctx" "int dir"
 .Ft nfds_t
 .Fo knc_get_pollfds
 .Fa "knc_ctx ctx" "struct pollfd *fds"
@@ -503,6 +507,12 @@ and plaintext side of the stream but as encryption increases the size
 slightly, this number may represent neither the ciphertext size nor
 the plaintext size.
 It should therefore be used with a grain of salt.
+.It Fn knc_need_input ctx dir
+returns true if input is needed on 
+.Ar dir .
+.It Fn knc_can_output ctx dir
+returns true if output is available on
+.Ar dir .
 .It Fn knc_get_pollfds ctx fds cbs nfds
 fills out
 .Ar fds

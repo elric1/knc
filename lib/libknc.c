@@ -105,8 +105,12 @@ struct knc_ctx {
 #define KNC_ERROR_PIPE	0x4
 	char			*errstr;
 
-	size_t			 recvinbufsiz;
-	size_t			 sendinbufsiz;
+	size_t			 recvinbufsiz;	/* XXXrcd: low water? */
+	size_t			 sendinbufsiz;	/* XXXrcd: low water? */
+
+	size_t			 sendmax;	/* XXXrcd: hmmm */
+	size_t			 gssmaxpacket;
+
 	struct knc_stream	 raw_recv;
 	struct knc_stream	 cooked_recv;
 	struct knc_stream	 raw_send;
@@ -150,8 +154,6 @@ struct fd_cookie {
 
 #define MIN(a, b)	((a)<(b)?(a):(b))
 
-#define KNC_MAXPACKETCONTENTS	65536
-
 static int debug = 0;
 #define DEBUG(x) do {				\
 		if (debug) {			\
@@ -193,7 +195,6 @@ static int	knc_state_session(knc_ctx, void *, size_t);
 static int	knc_state_command(knc_ctx, void *, size_t);
 static int	knc_state_process_in(knc_ctx);
 static int	knc_state_process_out(knc_ctx);
-static int	knc_state_process(knc_ctx);
 
 static struct knc_stream *knc_find_buf(knc_ctx, int, int);
 
@@ -350,7 +351,6 @@ knc_put_stream_mmapbuf(struct knc_stream *s, size_t len, int flags, int fd,
 		       off_t offset)
 {
 	struct mmapregion	*r;
-	char			*buf;
 
 	r = calloc(1, sizeof(*r));
 	if (!r)
@@ -359,7 +359,9 @@ knc_put_stream_mmapbuf(struct knc_stream *s, size_t len, int flags, int fd,
 	r->buf = mmap(NULL, len, PROT_READ, flags, fd, offset);;
 	r->len = len;
 
-	if (!buf)
+	/* XXXrcd: better errors would be appreciated... */
+
+	if (!r->buf)
 		return -1;
 
 	return knc_put_stream_userbuf(s, r->buf, r->len, free_mmapbuf, r);
@@ -701,6 +703,8 @@ knc_ctx_init(void)
 
 	ret->recvinbufsiz = 16384;
 	ret->sendinbufsiz = 16384;
+	ret->sendmax      = 65536;
+	ret->gssmaxpacket = 8192;
 
 	return ret;
 }
@@ -1155,15 +1159,14 @@ knc_state_process_out(knc_ctx ctx)
 	if (ctx->state != STATE_SESSION)
 		return 0;
 
-	for (;;) {
+	while (knc_stream_avail(&ctx->cooked_send) < ctx->sendmax) {
 
 		/*
-		 * We clip the length at KNC_MAXPACKETCONTENTS to make
+		 * We clip the length at ctx->gssmaxpacket to make
 		 * the job of the receiver easier.
 		 */
 
-		len = knc_get_ostream(&ctx->raw_send, &buf,
-		    KNC_MAXPACKETCONTENTS);
+		len = knc_get_ostream(&ctx->raw_send, &buf, ctx->gssmaxpacket);
 
 		if (len < 1) {
 			/* XXXrcd: ERRORS? Maybe there aren't any...? */
@@ -1188,25 +1191,6 @@ knc_state_process_out(knc_ctx ctx)
 	}
 
 	DEBUG(("knc_state_process_out: leave\n"));
-
-	return 0;
-}
-
-/*
- * State session simply moves things between the streams as much as
- * possible.
- */
-
-static int
-knc_state_process(knc_ctx ctx)
-{
-
-	DEBUG(("knc_state_process: enter\n"));
-
-	knc_state_process_in(ctx);
-	knc_state_process_out(ctx);
-
-	DEBUG(("knc_state_process: leave\n"));
 
 	return 0;
 }
@@ -1528,6 +1512,29 @@ knc_local_is_open(knc_ctx ctx)
 	return ctx->local_uses_fd && ctx->local_is_open;
 }
 
+int
+knc_need_input(knc_ctx ctx, int dir)
+{
+
+	/*
+	 * We only check the amount of data we have decrypted, because
+	 * we could lockup if we don't try to read when we have a
+	 * partial packet in the ctx->raw_recv buffer.
+	 */
+
+	if (dir == KNC_DIR_RECV)
+		return knc_stream_avail(&ctx->cooked_recv) < ctx->recvinbufsiz;
+
+	return knc_pending(ctx, KNC_DIR_SEND) < ctx->sendinbufsiz;
+}
+
+int
+knc_can_output(knc_ctx ctx, int dir)
+{
+
+	return knc_pending(ctx, dir) > 0;
+}
+
 static void _fill_recv(knc_ctx ctx)  { knc_fill(ctx, KNC_DIR_RECV); }
 static void _fill_send(knc_ctx ctx)  { knc_fill(ctx, KNC_DIR_SEND); }
 static void _flush_send(knc_ctx ctx) { knc_flush(ctx, KNC_DIR_SEND, 0); }
@@ -1542,8 +1549,7 @@ knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs, nfds_t nfds)
 	nfds_t	i = 0;
 
 	if (ctx->net_uses_fd && ctx->net_is_open) {
-		/* XXXrcd: check fd validity? */
-		if (knc_pending(ctx, KNC_DIR_RECV) < ctx->recvinbufsiz) {
+		if (knc_need_input(ctx, KNC_DIR_RECV)) {
 			cbs[i]		= _fill_recv;
 			fds[i].fd	= knc_get_net_rfd(ctx);
 			fds[i++].events	= POLLIN;
@@ -1551,8 +1557,7 @@ knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs, nfds_t nfds)
 				return -1;
 		}
 
-		/* XXXrcd: check fd validity? */
-		if (knc_pending(ctx, KNC_DIR_SEND) > 0) {
+		if (knc_can_output(ctx, KNC_DIR_SEND)) {
 			cbs[i]		= _flush_send;
 			fds[i].fd	= knc_get_net_wfd(ctx);
 			fds[i++].events = POLLOUT;
@@ -1562,8 +1567,12 @@ knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs, nfds_t nfds)
 	}
 
 	if (ctx->local_uses_fd && ctx->local_is_open) {
-		/* XXXrcd: check fd validity? */
-		if (knc_pending(ctx, KNC_DIR_SEND) < ctx->sendinbufsiz) {
+		/*
+		 * Here, we are reading unframed bytes and so we size our
+		 * buffer as the slightly more accurate raw+cooked size for
+		 * comparison.
+		 */
+		if (knc_need_input(ctx, KNC_DIR_SEND)) {
 			cbs[i]		= _fill_send;
 			fds[i].fd	 = knc_get_local_rfd(ctx);
 			fds[i++].events	 = POLLIN;
@@ -1571,8 +1580,7 @@ knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs, nfds_t nfds)
 				return -1;
 		}
 
-		/* XXXrcd: check fd validity? */
-		if (knc_pending(ctx, KNC_DIR_RECV) > 0) {
+		if (knc_can_output(ctx, KNC_DIR_RECV) > 0) {
 			cbs[i]		= _flush_recv;
 			fds[i].fd	 = knc_get_local_wfd(ctx);
 			fds[i++].events	 = POLLOUT;
@@ -1673,16 +1681,9 @@ knc_fill(knc_ctx ctx, int dir)
 {
 	ssize_t	  ret;
 	void	 *tmpbuf;
-	int	(*process)(knc_ctx);	
 	ssize_t	(*ourread)(void *, void *, size_t);
 	void	 *ourcookie;
 	int	 *is_open;
-
-	/*
-	 * We must be much more careful about when we process these
-	 * packets.  This is not good, yet.
-	 */
-	process   = knc_state_process;
 
 	if (dir == KNC_DIR_SEND) {
 		ourread   =  ctx->localread;
@@ -1749,7 +1750,12 @@ knc_fill(knc_ctx ctx, int dir)
 		knc_fill_buf(ctx, dir, ret);
 	}
 
-	return process(ctx);
+	if (KNC_DIR_RECV)
+		knc_state_process_in(ctx);
+
+	knc_garbage_collect(ctx);
+
+	return 0;
 }
 
 int
@@ -1759,28 +1765,21 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 	int		 iovcnt;
 	size_t		 completelen = 0;
 	ssize_t		 len;
-	int		(*process)(knc_ctx);	
 	ssize_t		(*ourwritev)(void *, const struct iovec *, int);
 	void		 *ourcookie;
 
 	if (dir == KNC_DIR_SEND) {
-		process   = knc_state_process_out;
 		ourwritev = ctx->netwritev;
 		ourcookie = ctx->netcookie;
 	} else {
-		process   = knc_state_process_in;
 		ourwritev = ctx->localwritev;
 		ourcookie = ctx->localcookie;
 	}
 
-	/*
-	 * XXXrcd: should we process in the loop?  I think that might
-	 *         very well be a good plan, innit?
-	 */
-
-	process(ctx);
-
 	for (;;) {
+		if (dir == KNC_DIR_SEND)
+			knc_state_process_out(ctx);
+
 		len = knc_get_obufv(ctx, dir, &vec, &iovcnt);
 		if (len <= 0)
 			break;
@@ -1818,6 +1817,8 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 
 		DEBUG(("knc_flush: wrote %zd bytes.\n", len));
 		knc_drain_buf(ctx, dir, len);
+
+		knc_garbage_collect(ctx);
 
 		completelen += len;
 		if (completelen > flushlen)
@@ -1874,7 +1875,6 @@ knc_write(knc_ctx ctx, const void *buf, size_t len)
 	ssize_t	ret;
 
 	ret = knc_put_buf(ctx, KNC_DIR_SEND, buf, len);
-	knc_state_process(ctx);
 
 	knc_flush(ctx, KNC_DIR_SEND, -1);
 
