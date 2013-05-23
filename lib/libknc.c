@@ -1878,29 +1878,19 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 		if (len < 0) {
 			DEBUG(("write error: %s\n", strerror(errno)));
 
-			if (errno == EINTR || errno == EAGAIN) {
-				return -1;
+			switch (errno) {
+			case EINTR:
+			case EAGAIN:
+#if EAGAIN != EWOULDBLOCK
+			case EWOULDBLOCK:
+#endif
+				return errno;
+
+			default:
+				/* XXXrcd: hmmm! more than this, I think. */
+				knc_syscall_error(ctx, "writev", errno);
+				return errno;
 			}
-
-			/*
-			 * XXXrcd: Other possible errors:
-			 *
-			 *	EPIPE
-			 *	ECONNRESET
-			 *	ENETRESET
-			 *	ECONNABORTED
-			 *	ENOBUFS
-			 *
-			 * These should be considered.
-			 *
-			 * For now, we simply bail on anything that we do not
-			 * explicitly recognise.
-			 */
-
-			/* XXXrcd: probably should do a little more here... */
-			knc_syscall_error(ctx, "I/O", errno);
-
-			return -1;
 		}
 
 		DEBUG(("knc_flush: wrote %zd bytes.\n", len));
@@ -1909,11 +1899,9 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 		knc_garbage_collect(ctx);
 
 		completelen += len;
-		if (completelen > flushlen)
+		if (completelen >= flushlen)
 			break;
 	}
-
-	/* XXXrcd: ERRORS??!? */
 
 	return 0;
 }
@@ -1986,7 +1974,9 @@ knc_write(knc_ctx ctx, const void *buf, size_t len)
 
 	ret = knc_put_buf(ctx, KNC_DIR_SEND, buf, len);
 
-	knc_flush(ctx, KNC_DIR_SEND, -1);
+	/* XXXrcd: I'm abusing sendinbufsiz here, this isn't good. */
+	if (knc_pending(ctx, KNC_DIR_SEND) > ctx->sendinbufsiz)
+		knc_flush(ctx, KNC_DIR_SEND, 0);
 
 	return ret;
 }
