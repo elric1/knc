@@ -1829,15 +1829,25 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 	return 0;
 }
 
-#if 0	/* XXXrcd: complete this */
 void
 knc_authenticate(knc_ctx ctx)
 {
+	knc_callback	cbs[4];
+	struct pollfd	fds[4];
+	nfds_t		nfds;
+	int		ret;
 
-	/* XXXrcd: run the authentication in blocking mode */
-	XXXrcd: do not compile until finished.
+	while (!knc_is_authenticated(ctx)) {
+		nfds = knc_get_pollfds(ctx, fds, cbs, 4);
+                ret = poll(fds, nfds, -1);
+                if (ret == -1) {
+			knc_syscall_error(ctx, "poll", errno);
+                        break;
+                }
+                knc_service_pollfds(ctx, fds, cbs, nfds);
+                knc_garbage_collect(ctx);
+	}
 }
-#endif
 
 ssize_t
 knc_read(knc_ctx ctx, void *buf, size_t len)

@@ -94,6 +94,7 @@ knc_ctx		knc_connect(knc_ctx, const char *, const char *,
 
 /* The simple(?) interface */
 
+void		knc_authenticate(knc_ctx);
 ssize_t		knc_read(knc_ctx, void *, size_t);
 ssize_t		knc_write(knc_ctx, const void *, size_t);
 int		knc_fill(knc_ctx, int);
