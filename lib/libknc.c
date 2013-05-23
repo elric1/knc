@@ -33,6 +33,7 @@
 
 #include <err.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <malloc.h>
 #include <netdb.h>
 #include <stdio.h>
@@ -1349,14 +1350,68 @@ knc_initiate(knc_ctx ctx)
 	knc_state_init(ctx, tmp, 0);
 }
 
+#ifdef SOCK_NONBLOCK
+#define	I_SOCK_NONBLOCK	SOCK_NONBLOCK
+#else
+#define	I_SOCK_NONBLOCK	0
+#endif
+
+#ifdef SOCK_CLOEXEC
+#define	I_SOCK_CLOEXEC	SOCK_CLOEXEC
+#else
+#define	I_SOCK_CLOEXEC	0
+#endif
+
+#ifdef SOCK_NOSIGPIPE
+#define	I_SOCK_NOSIGPIPE	SOCK_NOSIGPIPE
+#else
+#define	I_SOCK_NOSIGPIPE	0
+#endif
+
 static int
-connect_host(const char *domain, const char *service)
+get_socket(int d, int t, int p, int flags)
+{
+	int	s;
+
+	if (flags & KNC_SOCK_NONBLOCK)
+		t |= I_SOCK_NONBLOCK;
+	if (flags & KNC_SOCK_CLOEXEC)
+		t |= I_SOCK_CLOEXEC;
+
+	t |= I_SOCK_NOSIGPIPE;
+
+	s = socket(d, t, p);
+
+#if I_SOCK_NONBLOCK || I_SOCK_CLOEXEC || I_SOCK_NOSIGPIPE
+{
+	int	flags;
+
+	flags = fcntl(s, F_GETFL, 0);
+
+	if (flags & KNC_SOCK_NONBLOCK)
+		flags |= O_NONBLOCK;
+	if (flags & KNC_SOCK_CLOEXEC)
+		flags |= O_CLOEXEC;
+
+	flags |= O_NOSIGPIPE;
+
+	fcntl(s, F_SETFL, flags);
+	/* not much to do on failure, really. */
+}
+#endif
+
+	return s;
+}
+
+static int
+connect_host(const char *domain, const char *service, int flags)
 {
 	struct	addrinfo ai, *res, *res0;
 	int	ret;
 	int	s = -1;
 
 	DEBUG(("connecting to (%s, %s)", service, domain));
+
 	memset(&ai, 0x0, sizeof(ai));
 	ai.ai_socktype = SOCK_STREAM;
 	ret = getaddrinfo(domain, service, &ai, &res0);
@@ -1365,8 +1420,10 @@ connect_host(const char *domain, const char *service)
 		    gai_strerror(ret)));
 		return -1;
 	}
+
 	for (res=res0; res; res=res->ai_next) {
-		s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+		s = get_socket(res->ai_family, res->ai_socktype,
+		    res->ai_protocol, flags);
 		if (s == -1) {
 			DEBUG(("connect: %s", strerror(errno)));
 			continue;
@@ -1693,7 +1750,7 @@ knc_connect(knc_ctx ctx, const char *hostservice,
 
 	knc_import_set_hb_service(ctx, host, service);
 
-	fd = connect_host(host, port);
+	fd = connect_host(host, port, opts);
 	if (fd == -1) {
 		knc_syscall_error(ctx, "connect_host", errno);
 		goto out;

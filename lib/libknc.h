@@ -97,6 +97,9 @@ void		knc_accept(knc_ctx);
 knc_ctx		knc_connect(knc_ctx, const char *, const char *,
 			    const char *, int);
 
+#define	KNC_SOCK_NONBLOCK	0x0001
+#define	KNC_SOCK_CLOEXEC	0x0002
+
 /* The simple(?) interface */
 
 void		knc_authenticate(knc_ctx);
