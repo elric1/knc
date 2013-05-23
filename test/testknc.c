@@ -56,7 +56,6 @@ main(int argc, char **argv)
 		knc_callback	cbs[4];
 		struct pollfd	fds[4];
 		nfds_t		nfds;
-		size_t		i;
 
 		if (knc_error(ctx))
 			break;
