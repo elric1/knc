@@ -23,6 +23,8 @@
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <sys/mman.h>
+
 #include <poll.h>
 
 #include <gssapi/gssapi.h>
