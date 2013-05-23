@@ -76,6 +76,7 @@ struct knc_stream {
 };
 
 struct knc_ctx {
+	int			 opts;
 	gss_ctx_id_t		 gssctx;
 	gss_cred_id_t		 cred;		/* both */
 	gss_channel_bindings_t	 cb;		/* both */
@@ -779,6 +780,36 @@ knc_errstr(knc_ctx ctx)
 }
 
 int
+knc_get_opt(knc_ctx ctx, unsigned opt)
+{
+
+	switch (opt) {
+	case KNC_OPT_NOPRIVATE:
+		return (ctx->opts & KNC_OPT_NOPRIVATE) ? 1 : 0;
+	default:
+		break;
+	}
+
+	return -1;
+}
+
+void
+knc_set_opt(knc_ctx ctx, unsigned opt, int value)
+{
+
+	switch (opt) {
+	case KNC_OPT_NOPRIVATE:
+		if (value)
+			ctx->opts |= KNC_OPT_NOPRIVATE;
+		else
+			ctx->opts &= ~KNC_OPT_NOPRIVATE;
+		break;
+	default:
+		break;
+	}
+}
+
+int
 knc_is_authenticated(knc_ctx ctx)
 {
 
@@ -1147,6 +1178,7 @@ knc_state_process_out(knc_ctx ctx)
 	OM_uint32	 min;
 	ssize_t		 len;
 	void		*buf;
+	int		 privacy = (ctx->opts & KNC_OPT_NOPRIVATE)?0:1;
 
 	DEBUG(("knc_state_process_out: enter\n"));
 
@@ -1175,7 +1207,7 @@ knc_state_process_out(knc_ctx ctx)
 
 		in.length = len;
 		in.value  = buf;
-		maj = gss_wrap(&min, ctx->gssctx, 1, GSS_C_QOP_DEFAULT,
+		maj = gss_wrap(&min, ctx->gssctx, privacy, GSS_C_QOP_DEFAULT,
 		    &in, NULL, &out);
 
 		/* XXXrcd: deal with this... */

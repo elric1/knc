@@ -47,6 +47,11 @@ void		knc_ctx_close(knc_ctx);
 
 /* Altering and querying the context */
 
+int		knc_get_opt(knc_ctx, unsigned);
+void		knc_set_opt(knc_ctx, unsigned, int);
+
+#define	KNC_OPT_NOPRIVATE	0x0001
+
 int		knc_is_authenticated(knc_ctx);
 void		knc_set_cred(knc_ctx, gss_cred_id_t);
 void		knc_set_service(knc_ctx, gss_name_t);
