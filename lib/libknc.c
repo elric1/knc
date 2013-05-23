@@ -1393,7 +1393,9 @@ get_socket(int d, int t, int p, int flags)
 	if (flags & KNC_SOCK_CLOEXEC)
 		flags |= O_CLOEXEC;
 
+#ifdef O_NOSIGPIPE
 	flags |= O_NOSIGPIPE;
+#endif
 
 	fcntl(s, F_SETFL, flags);
 	/* not much to do on failure, really. */
