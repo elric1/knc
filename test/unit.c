@@ -162,6 +162,10 @@ knc_loop(knc_ctx ctx, int server)
 		    server?"S":"C", strerror(errno));
 
 	for (;;) {
+		knc_callback	cbs[2];
+		struct pollfd	fds[4];
+		nfds_t		nfds;
+
 		fprintf(stderr, "%s: loop start (% 6d), "
 		    "R=% 9d %s S=% 9d %s ToSend=% 9d\n", server?"S":"C",
 		    ++loopcount, valrecv, do_recv?"    ":"done", valsend,
@@ -170,8 +174,7 @@ knc_loop(knc_ctx ctx, int server)
 		if (knc_error(ctx))
 			break;
 
-		/* XXXrcd: we assume that net_rfd == net_wfd, bad. */
-		if (knc_get_net_rfd(ctx) == -1) {
+		if (!knc_net_is_open(ctx)) {
 			fprintf(stderr, "Other end unexpectedly closed.\n");
 			break;
 		}
@@ -218,30 +221,17 @@ knc_loop(knc_ctx ctx, int server)
 		if (valsend >= TEST_SIZE)
 			do_send = 0;
 
-		FD_ZERO(&rd);
-		FD_ZERO(&wr);
 
-		if (knc_pending(ctx, KNC_DIR_RECV) < UNIT_BUFSIZ)
-			FD_SET(fd, &rd);
+		nfds = knc_get_pollfds(ctx, fds, cbs, 4);
 
-		if (knc_pending(ctx, KNC_DIR_SEND) > 0)
-			FD_SET(fd, &wr);
-
-		ret = select(fd+1, &rd, &wr, NULL, NULL);
-		if (ret < 0 && errno == EINTR)
-			continue;
-
+		ret = poll(fds, nfds, 0);
 		if (ret < 0) {
-			fprintf(stderr, "select: %s\n", strerror(errno));
+			fprintf(stderr, "poll: %s\n", strerror(errno));
 			break;
 		}
 
-		if (FD_ISSET(fd, &rd))
-			knc_fill(ctx, KNC_DIR_RECV);
-
-		if (FD_ISSET(fd, &wr))
-			knc_flush(ctx, KNC_DIR_SEND, 0);
-
+		knc_service_pollfds(ctx, fds, cbs, nfds);
+		
 		knc_garbage_collect(ctx);
 
 		if (!do_send && !do_recv && !knc_pending(ctx, KNC_DIR_SEND))
