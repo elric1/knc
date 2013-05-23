@@ -775,7 +775,7 @@ knc_errstr(knc_ctx ctx)
 }
 
 int
-knc_is_established(knc_ctx ctx)
+knc_is_authenticated(knc_ctx ctx)
 {
 
 	return ctx->state == STATE_SESSION || ctx->state == STATE_COMMAND;

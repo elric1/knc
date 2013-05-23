@@ -47,7 +47,7 @@ void		knc_ctx_close(knc_ctx);
 
 /* Altering and querying the context */
 
-int		knc_is_established(knc_ctx);
+int		knc_is_authenticated(knc_ctx);
 void		knc_set_cred(knc_ctx, gss_cred_id_t);
 void		knc_set_service(knc_ctx, gss_name_t);
 void		knc_import_set_service(knc_ctx, const char *, const gss_OID);
