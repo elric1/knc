@@ -588,6 +588,13 @@ knc_stream_put_trash(struct knc_stream *s, void *ptr)
 {
 	struct knc_stream_gc	*tmp;
 
+	/*
+	 * XXXrcd: we should allocate space for the rubbish before
+	 *         we allocate it as if we fail this malloc, we will
+	 *         start to leak because we aren't free(3)ing the
+	 *         garbage.
+	 */
+
 	tmp = malloc(sizeof(*tmp));
 	if (!tmp)
 		/* XXXrcd: ??? */
@@ -729,12 +736,15 @@ knc_ctx_close(knc_ctx ctx)
 	OM_uint32	min;
 
 	if (ctx->cred != GSS_C_NO_CREDENTIAL)
+		/* XXXrcd: Hmmm, well, maybe not---we didn't allocate it. */
 		gss_release_cred(&min, &ctx->cred);
 
 	if (ctx->deleg_cred != GSS_C_NO_CREDENTIAL)
+		/* XXXrcd: we should probably free this earlier. */
 		gss_release_cred(&min, &ctx->deleg_cred);
 
 	if (ctx->service != GSS_C_NO_NAME)
+		/* XXXrcd: we should probably free this earlier. */
 		gss_release_name(&min, &ctx->service);
 
 	if (ctx->gssctx != GSS_C_NO_CONTEXT)
@@ -1004,12 +1014,10 @@ knc_state_init(knc_ctx ctx, void *buf, size_t len)
 	    ctx->cb, &in, &ctx->ret_mech, &out, &ctx->ret_flags,
 	    &ctx->time_rec);
 
-	if (out.length > 0) {
-		/* XXXrcd: memory management? */
+	if (out.length > 0)
 		put_packet(&ctx->cooked_send, &out);
-	}
+		/* XXXrcd: errors? */
 
-	/* XXXrcd: better error handling... */
 	KNC_GSS_ERROR(ctx, maj, min, -1, "gss_init_sec_context");
 
 	if (!(maj & GSS_S_CONTINUE_NEEDED))
@@ -1031,7 +1039,6 @@ knc_state_accept(knc_ctx ctx, void *buf, size_t len)
 		return -1;
 
 	DEBUG(("knc_state_accept: enter\n"));
-	/* XXXrcd: ERRORS! */
 
 	out.length = 0;
 
@@ -1042,20 +1049,16 @@ knc_state_accept(knc_ctx ctx, void *buf, size_t len)
 	    ctx->cb, &ctx->client, &ctx->ret_mech, &out,
 	    &ctx->ret_flags, &ctx->time_rec, &ctx->deleg_cred);
 
-	if (out.length) {
+	if (out.length)
 		put_packet(&ctx->cooked_send, &out);
 		/* XXXrcd: ERRORS?!? */
-	}
 
-	/* XXXrcd: better error handling... */
 	KNC_GSS_ERROR(ctx, maj, min, -1, "gss_accept_sec_context");
 
 	if (!(maj & GSS_S_CONTINUE_NEEDED))
 		ctx->state = STATE_SESSION;
 
-	/* XXXrcd: free our buffer... */
-
-	return 0;	/* XXXrcd: ERRORS */
+	return 0;
 }
 
 static int
@@ -1074,13 +1077,14 @@ knc_state_session(knc_ctx ctx, void *buf, size_t len)
 	DEBUG(("knc_state_session: enter\n"));
 	maj = gss_unwrap(&min, ctx->gssctx, &in, &out, NULL, NULL);
 
-	/* XXXrcd: better error handling... */
 	if (maj != GSS_S_COMPLETE) {
 		knc_gss_error(ctx, maj, min, "gss_unwrap");
 		return -1;
 	}
 
 	if (out.length == 0) {
+		/* XXXrcd: do we need this release? */
+		gss_release_buffer(&min, &out);
 		ctx->state = STATE_COMMAND;
 		return 0;
 	}
@@ -1117,7 +1121,15 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 		ctx->open &= ~(OPEN_READ|OPEN_WRITE);
 	}
 
-	/* XXXrcd: unknown command.  should we continue?  yes, for now. */
+	/*
+	 * XXXrcd: unknown command.  should we continue?  yes, for now.
+	 *         Nico wants to return an error to the other side, we
+	 *         will implement that before the release.  To do this,
+	 *         we should like number the commands so that the other
+	 *         end knows which one we are not implementing.  This
+	 *         will require that some structure be defined for the
+	 *         commands in advance of the first release...
+	 */
 
 	ctx->state = STATE_SESSION;
 	return 0;
@@ -1193,6 +1205,7 @@ knc_state_process_out(knc_ctx ctx)
 	 * to ctx->cooked_send.
 	 */
 
+	/* XXXrcd: how about STATE_COMMAND? */
 	if (ctx->state != STATE_SESSION)
 		return 0;
 
@@ -1215,16 +1228,10 @@ knc_state_process_out(knc_ctx ctx)
 		maj = gss_wrap(&min, ctx->gssctx, privacy, GSS_C_QOP_DEFAULT,
 		    &in, NULL, &out);
 
-		/* XXXrcd: deal with this... */
 		KNC_GSS_ERROR(ctx, maj, min, -1, "gss_wrap");
 
-		/* XXXrcd: memory allocation? */
 		put_packet(&ctx->cooked_send, &out);
-
 		knc_stream_drain(&ctx->raw_send, len);
-
-
-		/* XXXrcd: should we continue? */
 	}
 
 	DEBUG(("knc_state_process_out: leave\n"));
@@ -1350,7 +1357,10 @@ knc_initiate(knc_ctx ctx)
 	ctx->gssctx = GSS_C_NO_CONTEXT;
 	ctx->state  = STATE_INIT;
 
-	/* XXXrcd: Do we have to run init here?  Probably, we do... */
+	/*
+	 * XXXrcd: Do we have to run init here?  Probably, we do...
+	 *         we could run init later in knc_fill/knc_flush?
+	 */
 	knc_state_init(ctx, tmp, 0);
 }
 
@@ -1501,7 +1511,10 @@ knc_set_net_fds(knc_ctx ctx, int rfd, int wfd)
 	/* XXXrcd: should we look for existing read/writev/close? */
 
 	cookie = malloc(sizeof(*cookie));
-	/* XXXrcd: errors! */
+	/*
+	 * XXXrcd: errors! Maybe we should use a static data structure
+	 *         inside knc_ctx for this.
+	 */
 
 	cookie->mine = 0;
 	cookie->rfd  = rfd;
@@ -1558,7 +1571,10 @@ knc_set_local_fds(knc_ctx ctx, int rfd, int wfd)
 	/* XXXrcd: should we look for existing read/writev/close? */
 
 	cookie = malloc(sizeof(*cookie));
-	/* XXXrcd: errors! */
+	/*
+	 * XXXrcd: errors! Maybe we should use a static data structure
+	 *         inside knc_ctx for this.
+	 */
 
 	cookie->mine = 0;
 	cookie->rfd  = rfd;
@@ -1635,9 +1651,6 @@ static void _fill_send(knc_ctx ctx)  { knc_fill(ctx, KNC_DIR_SEND); }
 static void _flush_send(knc_ctx ctx) { knc_flush(ctx, KNC_DIR_SEND, 0); }
 static void _flush_recv(knc_ctx ctx) { knc_flush(ctx, KNC_DIR_RECV, 0); }
 
-/* XXXrcd: bad macro, should be a parameter, eh? */
-#define READBUFSIZEROOBOB	16384
-
 nfds_t
 knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs, nfds_t nfds)
 {
@@ -1701,10 +1714,8 @@ knc_service_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs,
 }
 
 /*
- * The full requirement here is service@host:port.  We provide no defaults
- * as of yet...
- *
- * XXXrcd: provide defaults.
+ * The full requirement here is service@host:port.  The defaults are
+ * passed in as parameters to knc_connect.
  */
 
 knc_ctx
