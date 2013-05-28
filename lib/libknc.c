@@ -210,12 +210,11 @@ void
 debug_printf(const char *fmt, ...)
 {
 	va_list ap;
-	char	buf[16384];
 
+	fprintf(stderr, "%d: ", getpid());
 	va_start(ap, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, ap);
+	vfprintf(stderr, fmt, ap);
 	va_end(ap);
-	fprintf(stderr, "%d: %s", getpid(), buf);
 }
 
 static void
