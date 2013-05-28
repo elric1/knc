@@ -141,8 +141,6 @@ runclient(int fd, char *service, char *hostname)
 int
 knc_loop(knc_ctx ctx, int server)
 {
-	fd_set	 rd, wr;
-	int	 fd;
 	int	 i;
 	int	 loopcount = 0;
 	int	 ret;
@@ -152,14 +150,7 @@ knc_loop(knc_ctx ctx, int server)
 	int	 valsend = 0;
 	char	*buf;
 
-	/* XXXrcd: we assume that net_rfd == net_wfd, bad. */
-	fd = knc_get_net_rfd(ctx);
-
-	/* XXXrcd: Set non-blocking? */
-	ret = fcntl(fd, F_SETFL, O_NONBLOCK);
-	if (ret == -1)
-		fprintf(stderr, "%s: set nonblocking, %s\n",
-		    server?"S":"C", strerror(errno));
+	knc_set_opt(ctx, KNC_SOCK_NONBLOCK, 1);
 
 	for (;;) {
 		knc_callback	cbs[2];
@@ -250,6 +241,5 @@ knc_loop(knc_ctx ctx, int server)
 	}
 
 	knc_ctx_close(ctx);
-	close(fd);
 	return ret;
 }

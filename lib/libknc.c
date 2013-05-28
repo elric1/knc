@@ -192,6 +192,7 @@ static ssize_t	knc_stream_fill(struct knc_stream *, size_t);
 static size_t	knc_stream_avail(struct knc_stream *);
 static void	knc_stream_garbage_collect(struct knc_stream *);
 
+static int	socket_options(int, int);
 static ssize_t	read_packet(struct knc_stream *, void **b);
 static ssize_t	put_packet(struct knc_stream *, gss_buffer_t);
 
@@ -810,13 +811,40 @@ knc_get_opt(knc_ctx ctx, unsigned opt)
 void
 knc_set_opt(knc_ctx ctx, unsigned opt, int value)
 {
+	int	rfd;
+	int	wfd;
 
 	switch (opt) {
+	/* We handle all of the flag-options together: */
 	case KNC_OPT_NOPRIVACY:
+	case KNC_SOCK_NONBLOCK:
+	case KNC_SOCK_CLOEXEC:
 		if (value)
-			ctx->opts |= KNC_OPT_NOPRIVACY;
+			ctx->opts |= opt;
 		else
-			ctx->opts &= ~KNC_OPT_NOPRIVACY;
+			ctx->opts &= ~opt;
+		break;
+
+	/* We haven't defined any non-flag options, yet... */
+
+	default:
+		break;
+	}
+
+	/* Some options require additional actions: */
+
+	switch (opt) {
+	case KNC_SOCK_NONBLOCK:
+	case KNC_SOCK_CLOEXEC:
+		if (ctx->net_uses_fd) {
+			rfd = ((struct fd_cookie *)ctx->netcookie)->rfd;
+			wfd = ((struct fd_cookie *)ctx->netcookie)->wfd;
+
+			socket_options(rfd, ctx->opts);
+			if (wfd != rfd)
+				socket_options(wfd, ctx->opts);
+		}
+		/* XXXrcd: should we do something with the local side?? */
 		break;
 	default:
 		break;
@@ -1382,37 +1410,42 @@ knc_initiate(knc_ctx ctx)
 #endif
 
 static int
-get_socket(int d, int t, int p, int flags)
-{
-	int	s;
-
-	if (flags & KNC_SOCK_NONBLOCK)
-		t |= I_SOCK_NONBLOCK;
-	if (flags & KNC_SOCK_CLOEXEC)
-		t |= I_SOCK_CLOEXEC;
-
-	t |= I_SOCK_NOSIGPIPE;
-
-	s = socket(d, t, p);
-
-#if I_SOCK_NONBLOCK || I_SOCK_CLOEXEC || I_SOCK_NOSIGPIPE
+socket_options(int s, int opts)
 {
 	int	flags;
 
 	flags = fcntl(s, F_GETFL, 0);
 
-	if (flags & KNC_SOCK_NONBLOCK)
+	flags &= ~(O_NONBLOCK|O_CLOEXEC);
+
+	if (opts & KNC_SOCK_NONBLOCK)
 		flags |= O_NONBLOCK;
-	if (flags & KNC_SOCK_CLOEXEC)
+	if (opts & KNC_SOCK_CLOEXEC)
 		flags |= O_CLOEXEC;
 
 #ifdef O_NOSIGPIPE
 	flags |= O_NOSIGPIPE;
 #endif
 
-	fcntl(s, F_SETFL, flags);
-	/* not much to do on failure, really. */
+	return fcntl(s, F_SETFL, flags);
 }
+
+static int
+get_socket(int d, int t, int p, int opts)
+{
+	int	s;
+
+	if (opts & KNC_SOCK_NONBLOCK)
+		t |= I_SOCK_NONBLOCK;
+	if (opts & KNC_SOCK_CLOEXEC)
+		t |= I_SOCK_CLOEXEC;
+
+	t |= I_SOCK_NOSIGPIPE;
+
+	s = socket(d, t, p);
+
+#if !(I_SOCK_NONBLOCK || I_SOCK_CLOEXEC || I_SOCK_NOSIGPIPE)
+	socket_options(s, opts);
 #endif
 
 	return s;

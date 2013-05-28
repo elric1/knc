@@ -483,7 +483,7 @@ will be made.
 will call the write function pointer to send output for the
 specified stream.
 The first argument is the direction to flush, either
-.Ar KNC_DIR_RECV 
+.Ar KNC_DIR_RECV
 or
 .Ar KNC_DIR_SEND .
 The second argument is the minimum length of the flush.
@@ -508,7 +508,7 @@ slightly, this number may represent neither the ciphertext size nor
 the plaintext size.
 It should therefore be used with a grain of salt.
 .It Fn knc_need_input ctx dir
-returns true if input is needed on 
+returns true if input is needed on
 .Ar dir .
 .It Fn knc_can_output ctx dir
 returns true if output is available on
