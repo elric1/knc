@@ -1958,6 +1958,16 @@ knc_read(knc_ctx ctx, void *buf, size_t len)
 		return ret;
 	}
 
+	/*
+	 * If the socket is non-blocking: flush output before reading.
+	 * The goal here is to make standard request response protocols
+	 * used in blocking mode more likely to work.  We only perform
+	 * the flush before we attempt an actual read which is why this
+	 * code is below that which comes above.
+	 */
+	if (!(ctx->opts & KNC_SOCK_NONBLOCK))
+		knc_flush(ctx, KNC_DIR_SEND, -1);
+
 	for (;;) {
 		err = knc_fill(ctx, KNC_DIR_RECV);
 
