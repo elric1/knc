@@ -798,8 +798,8 @@ knc_get_opt(knc_ctx ctx, unsigned opt)
 {
 
 	switch (opt) {
-	case KNC_OPT_NOPRIVATE:
-		return (ctx->opts & KNC_OPT_NOPRIVATE) ? 1 : 0;
+	case KNC_OPT_NOPRIVACY:
+		return (ctx->opts & KNC_OPT_NOPRIVACY) ? 1 : 0;
 	default:
 		break;
 	}
@@ -812,11 +812,11 @@ knc_set_opt(knc_ctx ctx, unsigned opt, int value)
 {
 
 	switch (opt) {
-	case KNC_OPT_NOPRIVATE:
+	case KNC_OPT_NOPRIVACY:
 		if (value)
-			ctx->opts |= KNC_OPT_NOPRIVATE;
+			ctx->opts |= KNC_OPT_NOPRIVACY;
 		else
-			ctx->opts &= ~KNC_OPT_NOPRIVATE;
+			ctx->opts &= ~KNC_OPT_NOPRIVACY;
 		break;
 	default:
 		break;
@@ -1194,7 +1194,7 @@ knc_state_process_out(knc_ctx ctx)
 	OM_uint32	 min;
 	ssize_t		 len;
 	void		*buf;
-	int		 privacy = (ctx->opts & KNC_OPT_NOPRIVATE)?0:1;
+	int		 privacy = (ctx->opts & KNC_OPT_NOPRIVACY)?0:1;
 
 	DEBUG(("knc_state_process_out: enter\n"));
 

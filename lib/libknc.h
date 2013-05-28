@@ -50,7 +50,19 @@ void		knc_ctx_close(knc_ctx);
 int		knc_get_opt(knc_ctx, unsigned);
 void		knc_set_opt(knc_ctx, unsigned, int);
 
-#define	KNC_OPT_NOPRIVATE	0x0001
+/*
+ * These are the ``options''.  Some of them are KNC_SOCK and some are
+ * KNC_OPT, this distinguishes those which are directly tied to the
+ * corresponding socket options vs. those that affect the protocol that
+ * KNC implements.
+ *
+ * XXXrcd: is this a meaningful distinction?
+ */
+
+#define	KNC_SOCK_NONBLOCK	0x0001
+#define	KNC_SOCK_CLOEXEC	0x0002
+#define KNC_OPT_NOPRIVACY	0x0004
+#define	KNC_OPT_NOPRIVATE	KNC_OPT_NOPRIVACY
 
 int		knc_is_authenticated(knc_ctx);
 void		knc_set_cred(knc_ctx, gss_cred_id_t);
@@ -96,9 +108,6 @@ void		knc_accept(knc_ctx);
 
 knc_ctx		knc_connect(knc_ctx, const char *, const char *,
 			    const char *, int);
-
-#define	KNC_SOCK_NONBLOCK	0x0001
-#define	KNC_SOCK_CLOEXEC	0x0002
 
 /* The simple(?) interface */
 
