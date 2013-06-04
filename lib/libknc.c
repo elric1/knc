@@ -1829,6 +1829,28 @@ out:
 	return ctx;
 }
 
+static int
+errno_switch(knc_ctx ctx, int e, int *is_open, const char *errstr)
+{
+
+	switch (e) {
+#if EAGAIN != EWOULDBLOCK
+	case EWOULDBLOCK:
+#endif
+	case EINTR:
+	case EAGAIN:
+		break;
+
+	default:
+		/* XXXrcd: hmmm! more than this, I think. */
+		*is_open = 0;
+		knc_syscall_error(ctx, errstr, e);
+	}
+
+	knc_garbage_collect(ctx);
+	return errno;
+}
+
 int
 knc_fill(knc_ctx ctx, int dir)
 {
@@ -1865,20 +1887,7 @@ knc_fill(knc_ctx ctx, int dir)
 
 	if (ret == -1) {
 		DEBUG(("read error: %s\n", strerror(errno)));
-
-		switch (errno) {
-		case EINTR:
-		case EAGAIN:
-#if EAGAIN != EWOULDBLOCK
-		case EWOULDBLOCK:
-#endif
-			return errno;
-
-		default:
-			/* XXXrcd: hmmm! more than this, I think. */
-			knc_syscall_error(ctx, "reading", errno);
-			return errno;
-		}
+		return errno_switch(ctx, errno, is_open, "reading");
 	}
 
 	if (ret == 0) {
@@ -1913,13 +1922,16 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 	ssize_t		 len;
 	ssize_t		(*ourwritev)(void *, const struct iovec *, int);
 	void		 *ourcookie;
+	int		 *is_open;
 
 	if (dir == KNC_DIR_SEND) {
-		ourwritev = ctx->netwritev;
-		ourcookie = ctx->netcookie;
+		ourwritev =  ctx->netwritev;
+		ourcookie =  ctx->netcookie;
+		is_open   = &ctx->net_is_open;
 	} else {
-		ourwritev = ctx->localwritev;
-		ourcookie = ctx->localcookie;
+		ourwritev =  ctx->localwritev;
+		ourcookie =  ctx->localcookie;
+		is_open   = &ctx->local_is_open;
 	}
 
 	for (;;) {
@@ -1933,22 +1945,9 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 
 		len = ourwritev(ourcookie, vec, iovcnt);
 
-		if (len < 0) {
+		if (len == -1) {
 			DEBUG(("write error: %s\n", strerror(errno)));
-
-			switch (errno) {
-			case EINTR:
-			case EAGAIN:
-#if EAGAIN != EWOULDBLOCK
-			case EWOULDBLOCK:
-#endif
-				return errno;
-
-			default:
-				/* XXXrcd: hmmm! more than this, I think. */
-				knc_syscall_error(ctx, "writev", errno);
-				return errno;
-			}
+			return errno_switch(ctx, errno, is_open, "writev");
 		}
 
 		DEBUG(("knc_flush: wrote %zd bytes.\n", len));
