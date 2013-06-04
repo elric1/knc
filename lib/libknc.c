@@ -440,6 +440,8 @@ knc_get_ostream(struct knc_stream *s, void **buf, size_t len)
 	return 0;
 }
 
+#define MAX_IOVCNT	32
+
 static size_t
 knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 {
@@ -456,7 +458,8 @@ knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 	i = 0;
 	for (cur = s->cur; cur; cur = cur->next)
 		/* XXXrcd: test length and all of that? */
-		i++;
+		if (i++ == MAX_IOVCNT)
+			break;
 
 	*vec = malloc(i * sizeof(**vec));
 	if (!*vec) {
@@ -475,11 +478,13 @@ knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 	    len, len));
 
 	for (cur = cur->next; cur; cur = cur->next) {
-		(*vec)[i  ].iov_base = cur->buf;
-		(*vec)[i++].iov_len  = cur->len;
+		(*vec)[i].iov_base = cur->buf;
+		(*vec)[i].iov_len  = cur->len;
 		len += cur->len;
 		DEBUG(("creating iovec element of length %zu, "
 		    "total %zu\n", cur->len, len));
+		if (i++ == MAX_IOVCNT)
+			break;
 	}
 
 	*count = i;
