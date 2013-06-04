@@ -183,10 +183,10 @@ static size_t			 knc_append_stream_bit(struct knc_stream *,
 static int	knc_put_stream(struct knc_stream *, const void *, size_t);
 static int	knc_put_stream_gssbuf(struct knc_stream *, gss_buffer_t);
 static size_t	knc_get_istream(struct knc_stream *, void **, size_t);
-static ssize_t	knc_get_ostream(struct knc_stream *, void **, size_t);
-static ssize_t	knc_get_ostreamv(struct knc_stream *, struct iovec **, int *);
+static size_t	knc_get_ostream(struct knc_stream *, void **, size_t);
+static size_t	knc_get_ostreamv(struct knc_stream *, struct iovec **, int *);
 static int	knc_stream_put_trash(struct knc_stream *, void *);
-static ssize_t	knc_get_ostream_contig(struct knc_stream *, void **, size_t);
+static size_t	knc_get_ostream_contig(struct knc_stream *, void **, size_t);
 static ssize_t	knc_stream_drain(struct knc_stream *, size_t);
 static ssize_t	knc_stream_fill(struct knc_stream *, size_t);
 static size_t	knc_stream_avail(struct knc_stream *);
@@ -420,37 +420,36 @@ knc_get_istream(struct knc_stream *s, void **buf, size_t len)
  * for writing.
  */
 
-static ssize_t
+static size_t
 knc_get_ostream(struct knc_stream *s, void **buf, size_t len)
 {
 
-	if (!s || !s->cur) {
-		/* XXXrcd: better errors... */
-		return -1;
-	}
+	if (!s || !s->cur)
+		/* Nothing here... */
+		return 0;
 
 	DEBUG(("knc_get_ostream: s->cur = %p\n", s->cur));
 
 	/* XXXrcd: hmmm, what if bufpos moves us beyond the stream? */
 
-	*buf = (char *)s->cur->buf + s->bufpos;
-	if (s->cur->len >= s->bufpos)
-		len = MIN(len, s->cur->len - s->bufpos);
+	if (s->cur->len >= s->bufpos) {
+		*buf = (char *)s->cur->buf + s->bufpos;
+		return MIN(len, s->cur->len - s->bufpos);
+	}
 
-	return len;
+	return 0;
 }
 
-static ssize_t
+static size_t
 knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 {
 	struct knc_stream_bit	*cur;
 	size_t			 i;
 	size_t			 len;
 
-	if (!s || !s->cur) {
-		/* XXXrcd: better errors... */
-		return -1;
-	}
+	if (!s || !s->cur)
+		/* Nothing here */
+		return 0;
 
 	/* First we count the bits. */
 
@@ -462,7 +461,7 @@ knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 	*vec = malloc(i * sizeof(**vec));
 	if (!*vec) {
 		/* XXXrcd: better errors... */
-		return -2;
+		return 0;
 	}
 
 	i = 0;
@@ -496,7 +495,7 @@ knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
  * the returned buffer.
  */
 
-static ssize_t
+static size_t
 knc_get_ostream_contig(struct knc_stream *s, void **buf, size_t len)
 {
 	struct knc_stream_bit	*cur;
@@ -506,7 +505,7 @@ knc_get_ostream_contig(struct knc_stream *s, void **buf, size_t len)
 	/* We only bother if we're going to return the requested amount. */
 
 	if (knc_stream_avail(s) < len)
-		return -1;
+		return 0;
 
 	/* First, let's see if we have a single bit that fills this up. */
 
@@ -518,7 +517,7 @@ knc_get_ostream_contig(struct knc_stream *s, void **buf, size_t len)
 
 	*buf = malloc(len);
 	if (*buf == NULL)
-		return -1;
+		return 0;
 	knc_stream_put_trash(s, *buf);
 
 	retlen = 0;
