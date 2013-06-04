@@ -3,4 +3,4 @@
 CPPFLAGS = -I../lib
 LDFLAGS = -L../lib -lknc
 
-bin_PROGRAMS = unit testknc servefile
+bin_PROGRAMS = unit unit-simple testknc servefile
