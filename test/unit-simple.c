@@ -126,26 +126,27 @@ runserver(int fd)
 	knc_authenticate(ctx);
 
 	if (knc_error(ctx)) {
-		fprintf(stderr, "knc_read: %s\n", knc_errstr(ctx));
+		fprintf(stderr, "knc_authenticate: %s\n", knc_errstr(ctx));
 		exit(1);
 	}
 
 	for (;;) {
-		knc_read(ctx, &byte, 1);
-		knc_read(ctx, &offset, 4);
-		knc_read(ctx, &len, 4);
+		knc_fullread(ctx, &byte, 1);
+		knc_fullread(ctx, &offset, 4);
+		knc_fullread(ctx, &len, 4);
 
 		if (knc_error(ctx)) {
-			fprintf(stderr, "knc_read: %s\n", knc_errstr(ctx));
+			fprintf(stderr, "knc_fullread: %s\n", knc_errstr(ctx));
 			exit(1);
 		}
 
+#if 0
 		while (len > 0) {
 			char    buf[32768];
 			int     ret;
 
-			ret = knc_read(ctx, buf,
-			    (sizeof(buf) > len)?sizeof(buf):len);
+			ret = knc_fullread(ctx, buf,
+			    (sizeof(buf) < len)?sizeof(buf):len);
 
 			if (knc_error(ctx)) {
 				fprintf(stderr, "knc_read: %s\n",
@@ -155,6 +156,16 @@ runserver(int fd)
 
 			len -= ret;    /* consuming input... */
 		}
+#else
+		{
+			char	*buf;
+			int	 ret;
+
+			buf = malloc(len);
+			/* XXXrcd: errors */
+			ret = knc_fullread(ctx, buf, len);
+		}
+#endif
 
 		byte = 0;
 		knc_write(ctx, &byte, 1);
@@ -184,7 +195,7 @@ runclient(int fd, char *service, char *hostname)
 	knc_authenticate(ctx);
 
 	if (knc_error(ctx)) {
-		fprintf(stderr, "knc_read: %s\n", knc_errstr(ctx));
+		fprintf(stderr, "knc_authenticate: %s\n", knc_errstr(ctx));
 		exit(1);
 	}
 
@@ -221,10 +232,11 @@ runclient(int fd, char *service, char *hostname)
 
 		knc_flush(ctx, KNC_DIR_SEND, -1);
 
-		ret = knc_read(ctx, &byte, 1);
+		ret = knc_fullread(ctx, &byte, 1);
 
 		if (ret != 1)
-			fprintf(stderr, "knc_read() = %d\n", ret);
+			fprintf(stderr, "knc_fullread() = %d: %s\n", ret,
+			    strerror(errno));
 	}
 
 	close(fd);
