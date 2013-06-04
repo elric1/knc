@@ -1860,6 +1860,9 @@ knc_fill(knc_ctx ctx, int dir)
 	int	 *is_open;
 	int	  ret;
 
+	if (!ctx || ctx->error)
+		return EIO;
+
 	if (dir == KNC_DIR_SEND) {
 		ourread   =  ctx->localread;
 		ourcookie =  ctx->localcookie;
@@ -1890,13 +1893,16 @@ knc_fill(knc_ctx ctx, int dir)
 	}
 
 	if (ret == 0) {
-		*is_open = 0;
 		DEBUG(("knc_fill: got EOF\n"));
 		/*
 		 * XXXrcd: we may very well call this an error because
 		 *         we are supposed to see an appropriate command
 		 *         packet for close.
 		 */
+		*is_open = 0;
+		knc_generic_error(ctx, "Short input");
+		knc_garbage_collect(ctx);
+		return EIO;
 	}
 
 	if (ret > 0) {
@@ -1922,6 +1928,9 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 	ssize_t		(*ourwritev)(void *, const struct iovec *, int);
 	void		 *ourcookie;
 	int		 *is_open;
+
+	if (!ctx || ctx->error)
+		return EIO;
 
 	if (dir == KNC_DIR_SEND) {
 		ourwritev =  ctx->netwritev;
@@ -2016,17 +2025,43 @@ knc_read(knc_ctx ctx, void *buf, size_t len)
 
 	for (;;) {
 		err = knc_fill(ctx, KNC_DIR_RECV);
+ 
+		switch (err) {
+		case 0:
+			/* mmm, no error, let's go. */
+			break;
+
+#if EAGAIN != EWOULDBLOCK
+		case EWOULDBLOCK:
+#endif
+		case EAGAIN:
+			if (ctx->opts & KNC_SOCK_NONBLOCK) {
+				errno = err;
+				return -1;
+			}
+			/*
+			 * XXXrcd: really this should be an error if we
+			 *         are in blocking mode as why would we
+			 *         get this unless someone has naughtily
+			 *         lied to us?  At least, if this is going
+			 *         to occur, we should poll(2).
+			 */
+			break;
+
+		default:
+			errno = err;
+			return -1;
+		}
+
+		if (!ctx->net_is_open)
+			/* XXXrcd: double check this idea... */
+			return 0;
 
 		ret = knc_get_obuf(ctx, KNC_DIR_RECV, &tmpbuf, len);
 		if (ret > 0) {
 			memcpy(buf, tmpbuf, ret);
 			knc_drain_buf(ctx, KNC_DIR_RECV, ret);
 			break;
-		}
-
-		if (ctx->opts & KNC_SOCK_NONBLOCK || err == EINTR) {
-			errno = err;
-			return -1;
 		}
 	}
 
@@ -2037,6 +2072,16 @@ ssize_t
 knc_write(knc_ctx ctx, const void *buf, size_t len)
 {
 	ssize_t	ret;
+
+	if (!ctx || ctx->error) {
+		errno = EIO;
+		return -1;
+	}
+
+	if (!ctx->net_is_open) {
+		errno = EPIPE;
+		return -1;
+	}
 
 	ret = knc_put_buf(ctx, KNC_DIR_SEND, buf, len);
 
