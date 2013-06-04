@@ -182,7 +182,7 @@ static size_t			 knc_append_stream_bit(struct knc_stream *,
 
 static int	knc_put_stream(struct knc_stream *, const void *, size_t);
 static int	knc_put_stream_gssbuf(struct knc_stream *, gss_buffer_t);
-static int	knc_get_istream(struct knc_stream *, void **, size_t);
+static size_t	knc_get_istream(struct knc_stream *, void **, size_t);
 static ssize_t	knc_get_ostream(struct knc_stream *, void **, size_t);
 static ssize_t	knc_get_ostreamv(struct knc_stream *, struct iovec **, int *);
 static int	knc_stream_put_trash(struct knc_stream *, void *);
@@ -282,16 +282,25 @@ knc_alloc_stream_bit(size_t len)
 static int
 knc_put_stream(struct knc_stream *s, const void *buf, size_t len)
 {
-	struct knc_stream_bit	*bit;
+	void	*newbuf;
+	size_t	 ret;
+	size_t	 total = 0;
 
-	bit = knc_alloc_stream_bit(len);
-	if (!bit)
-		return -1;
+	while (len > 0) {
+		ret = knc_get_istream(s, &newbuf, len);
 
-	memcpy(bit->buf, buf, len);
-	bit->len = len;
+		if (!ret)
+			/* malloc failed: stop */
+			break;
 
-	return knc_append_stream_bit(s, bit);
+		memcpy(newbuf, buf, ret);
+		knc_stream_fill(s, ret);
+
+		len   -= ret;
+		total += ret;
+	}
+
+	return total;
 }
 
 static int
@@ -305,6 +314,7 @@ knc_put_stream_userbuf(struct knc_stream *s, void *buf, size_t len,
 		return -1;
 
 	bit->buf	= buf;
+	bit->allocated	= len;
 	bit->len	= len;
 	bit->free	= callback;
 	bit->cookie	= cookie;
@@ -373,29 +383,34 @@ knc_put_stream_mmapbuf(struct knc_stream *s, size_t len, int flags, int fd,
 	return knc_put_stream_userbuf(s, r->buf, r->len, free_mmapbuf, r);
 }
 
-static int
+static size_t
 knc_get_istream(struct knc_stream *s, void **buf, size_t len)
 {
 	struct knc_stream_bit	*tmp;
+	size_t			 remaining;
 
 	if (!s) {
 		/* XXXrcd: better errors... */
-		return -1;
+		return 0;
 	}
 
-	if (s->tail && s->tail->allocated - s->tail->len > len) {
-		*buf = (void *)((char *)s->tail->buf + s->tail->len);
-		return s->tail->allocated - s->tail->len;
+	if (s->tail) {
+		remaining = s->tail->allocated - s->tail->len;
+
+		if (remaining >= len) {
+			*buf = (void *)((char *)s->tail->buf + s->tail->len);
+			return MIN(len, remaining);
+		}
 	}
 
 	tmp = knc_alloc_stream_bit(len);
 	if (!tmp)
-		return -1;
+		return 0;
 
 	knc_append_stream_bit(s, tmp);
 
 	*buf = tmp->buf;
-	return tmp->allocated;
+	return MIN(len, tmp->allocated);
 }
 
 /*
