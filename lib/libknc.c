@@ -690,6 +690,7 @@ read_packet(struct knc_stream *s, void **buf)
 	len = knc_get_ostream_contig(s, buf, len);
 	knc_stream_drain(s, len);
 
+	DEBUG(("read_packet: %zu left in stream\n", s->avail));
 	/* XXXrcd: broken, I think. */
 
 	return len;
@@ -1991,11 +1992,36 @@ knc_authenticate(knc_ctx ctx)
 	}
 }
 
-ssize_t
-knc_read(knc_ctx ctx, void *buf, size_t len)
+static size_t
+reads_get_buf(knc_ctx ctx, void *buf, size_t len)
+{
+	size_t	 ret;
+	size_t	 total;
+	void	*tmp;
+
+	total = 0;
+	for (;;) {
+		ret = knc_get_obuf(ctx, KNC_DIR_RECV, &tmp, len - total);
+
+		if (ret == 0)
+			break;
+
+		memcpy((char *)buf + total, tmp, ret);
+		knc_drain_buf(ctx, KNC_DIR_RECV, ret);
+		total += ret;
+
+		if (total == len)
+			break;
+	}
+
+	return total;
+}
+
+static ssize_t
+internal_read(knc_ctx ctx, void *buf, size_t len, int full)
 {
 	ssize_t	 ret;
-	void	*tmpbuf;
+	ssize_t	 total;
 	int	 err;
 
 	DEBUG(("knc_read: about to read.\n"));
@@ -2006,12 +2032,10 @@ knc_read(knc_ctx ctx, void *buf, size_t len)
 	 * block if there is data available to return.
 	 */
 
-	ret = knc_get_obuf(ctx, KNC_DIR_RECV, &tmpbuf, len);
-	if (ret > 0) {
-		memcpy(buf, tmpbuf, ret);
-		knc_drain_buf(ctx, KNC_DIR_RECV, ret);
-		return ret;
-	}
+	total = reads_get_buf(ctx, buf, len);
+
+	if (!full || total == (ssize_t)len)
+		return len;
 
 	/*
 	 * If the socket is non-blocking: flush output before reading.
@@ -2057,15 +2081,27 @@ knc_read(knc_ctx ctx, void *buf, size_t len)
 			/* XXXrcd: double check this idea... */
 			return 0;
 
-		ret = knc_get_obuf(ctx, KNC_DIR_RECV, &tmpbuf, len);
-		if (ret > 0) {
-			memcpy(buf, tmpbuf, ret);
-			knc_drain_buf(ctx, KNC_DIR_RECV, ret);
-			break;
-		}
+		ret = reads_get_buf(ctx, (char *)buf + total, len - total);
+		total += ret;
+		if (!full || total == (ssize_t)len)
+			return total;
 	}
 
-	return ret;
+	return total;
+}
+
+ssize_t
+knc_read(knc_ctx ctx, void *buf, size_t len)
+{
+
+	return internal_read(ctx, buf, len, 0);
+}
+
+ssize_t
+knc_fullread(knc_ctx ctx, void *buf, size_t len)
+{
+
+	return internal_read(ctx, buf, len, 1);
 }
 
 ssize_t

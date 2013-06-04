@@ -113,6 +113,7 @@ knc_ctx		knc_connect(knc_ctx, const char *, const char *,
 
 void		knc_authenticate(knc_ctx);
 ssize_t		knc_read(knc_ctx, void *, size_t);
+ssize_t		knc_fullread(knc_ctx, void *, size_t);
 ssize_t		knc_write(knc_ctx, const void *, size_t);
 int		knc_fill(knc_ctx, int);
 int		knc_flush(knc_ctx, int, size_t);
