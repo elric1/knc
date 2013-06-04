@@ -2051,7 +2051,7 @@ knc_write(knc_ctx ctx, const void *buf, size_t len)
 /* XXXrcd: review this code against gssstdio.c! */
 
 static char *
-knc_errstring(OM_uint32 maj_stat, OM_uint32 min_stat)
+knc_errstring(OM_uint32 maj_stat, OM_uint32 min_stat, const char *preamble)
 {
 	gss_buffer_desc	 status;
 	OM_uint32	 new_stat;
@@ -2084,7 +2084,12 @@ knc_errstring(OM_uint32 maj_stat, OM_uint32 min_stat)
 		if (GSS_ERROR(ret))
 			return str;	/* XXXrcd: hmmm, not quite?? */
 
-		newlen = (str?strlen(str):0) + status.length + 3;
+		if (str)
+			newlen = strlen(str);
+		else
+			newlen = strlen(preamble);
+
+		newlen += status.length + 3;
 
 		tmp = str;
 		str = malloc(newlen);
@@ -2094,8 +2099,8 @@ knc_errstring(OM_uint32 maj_stat, OM_uint32 min_stat)
 			return tmp;	/* XXXrcd: hmmm, not quite?? */
 		}
 
-		snprintf(str, newlen, "%s%s%.*s", tmp?tmp:"", tmp?", ":"",
-		    (int)status.length, (char *)status.value);
+		snprintf(str, newlen, "%s%s%.*s", tmp?tmp:preamble,
+		    tmp?", ":": ", (int)status.length, (char *)status.value);
 
 		gss_release_buffer(&new_stat, &status);
 		free(tmp);
@@ -2151,7 +2156,7 @@ knc_gss_error(knc_ctx ctx, OM_uint32 maj_stat, OM_uint32 min_stat,
 {
 
 	ctx->error = KNC_ERROR_GSS;
-	ctx->errstr = knc_errstring(maj_stat, min_stat);
+	ctx->errstr = knc_errstring(maj_stat, min_stat, s);
 	if (!ctx->errstr)
 		ctx->errstr = strdup("Failed to construct GSS error");
 	DEBUG(("knc_gss_error: %s\n", ctx->errstr));
