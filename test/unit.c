@@ -166,7 +166,8 @@ knc_loop(knc_ctx ctx, int server)
 			break;
 
 		if (!knc_net_is_open(ctx)) {
-			fprintf(stderr, "Other end unexpectedly closed.\n");
+			fprintf(stderr, "%s: Other end unexpectedly closed.\n",
+			    server?"S":"C");
 			break;
 		}
 
@@ -222,7 +223,7 @@ knc_loop(knc_ctx ctx, int server)
 		}
 
 		knc_service_pollfds(ctx, fds, cbs, nfds);
-		
+
 		knc_garbage_collect(ctx);
 
 		if (!do_send && !do_recv && !knc_pending(ctx, KNC_DIR_SEND))
@@ -236,10 +237,12 @@ knc_loop(knc_ctx ctx, int server)
 
 	ret = 0;
 	if (knc_error(ctx)) {
-		fprintf(stderr, "KNC UNIT TEST ERROR: %s\n", knc_errstr(ctx));
+		fprintf(stderr, "%s: KNC UNIT TEST ERROR: %s\n",
+		    server?"S":"C", knc_errstr(ctx));
 		ret = 1;
 	}
 
+	close(knc_get_net_rfd(ctx));	/* XXXrcd: should be internal? */
 	knc_ctx_close(ctx);
 	return ret;
 }
