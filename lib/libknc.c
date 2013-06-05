@@ -507,12 +507,18 @@ knc_get_ostream_contig(struct knc_stream *s, void **buf, size_t len)
 	size_t			 retlen;
 	size_t			 tmplen;
 
-	/* We only bother if we're going to return the requested amount. */
-
-	if (knc_stream_avail(s) < len)
+	if (!s || !s->cur)
 		return 0;
 
-	/* First, let's see if we have a single bit that fills this up. */
+	/* We adjust len down to the available bytes */
+
+	tmplen = knc_stream_avail(s);
+	len = MIN(tmplen, len);
+
+	/*
+	 * Then, let's see if we have a single bit that fills this up.
+	 * If we do, we can process this request without copying.
+	 */
 
 	tmplen = knc_get_ostream(s, buf, len);
 	if (tmplen == len)
