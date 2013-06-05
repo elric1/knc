@@ -2175,8 +2175,8 @@ internal_read(knc_ctx ctx, void *buf, size_t len, int full)
 
 	total = reads_get_buf(ctx, buf, len);
 
-	if (!full || total == (ssize_t)len)
-		return len;
+	if ((!full && total > 0) || total == (ssize_t)len)
+		return total;
 
 	/*
 	 * If the socket is non-blocking: flush output before reading.
