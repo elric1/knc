@@ -1269,7 +1269,8 @@ knc_state_process_out(knc_ctx ctx)
 		 * the job of the receiver easier.
 		 */
 
-		len = knc_get_ostream(&ctx->raw_send, &buf, ctx->gssmaxpacket);
+		len = knc_get_ostream_contig(&ctx->raw_send, &buf,
+		    ctx->gssmaxpacket);
 
 		if (len < 1) {
 			/* XXXrcd: ERRORS? Maybe there aren't any...? */
