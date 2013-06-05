@@ -109,6 +109,7 @@ struct knc_ctx {
 #define KNC_ERROR_PROTO	0x2
 #define KNC_ERROR_RST	0x3
 #define KNC_ERROR_PIPE	0x4
+#define KNC_ERROR_NOCTX	0x5
 	char			*errstr;
 
 	size_t			 recvinbufsiz;	/* XXXrcd: low water? */
@@ -765,6 +766,9 @@ knc_ctx_close(knc_ctx ctx)
 {
 	OM_uint32	min;
 
+	if (!ctx)
+		return;
+
 	if (ctx->cred != GSS_C_NO_CREDENTIAL)
 		/* XXXrcd: Hmmm, well, maybe not---we didn't allocate it. */
 		gss_release_cred(&min, &ctx->cred);
@@ -808,12 +812,18 @@ int
 knc_error(knc_ctx ctx)
 {
 
+	if (!ctx)
+		return KNC_ERROR_NOCTX;
+
 	return ctx->error;
 }
 
 const char *
 knc_errstr(knc_ctx ctx)
 {
+
+	if (!ctx)
+		return "No KNC context.";
 
 	if (!ctx->error)
 		return NULL;
@@ -843,6 +853,9 @@ knc_set_opt(knc_ctx ctx, unsigned opt, int value)
 {
 	int	rfd;
 	int	wfd;
+
+	if (!ctx)
+		return;
 
 	switch (opt) {
 	/* We handle all of the flag-options together: */
@@ -885,6 +898,9 @@ int
 knc_is_authenticated(knc_ctx ctx)
 {
 
+	if (!ctx)
+		return 0;
+
 	return ctx->state == STATE_SESSION || ctx->state == STATE_COMMAND;
 }
 
@@ -892,6 +908,9 @@ void
 knc_set_cred(knc_ctx ctx, gss_cred_id_t cred)
 {
 	OM_uint32	min;
+
+	if (!ctx)
+		return;
 
 	if (ctx->cred != GSS_C_NO_CREDENTIAL)
 		gss_release_cred(&min, &ctx->cred);
@@ -902,6 +921,9 @@ knc_set_cred(knc_ctx ctx, gss_cred_id_t cred)
 void
 knc_set_service(knc_ctx ctx, gss_name_t service)
 {
+
+	if (!ctx)
+		return;
 
 	/* XXXrcd: sanity?  check if we are an initiator? */
 
@@ -921,6 +943,9 @@ knc_import_set_service(knc_ctx ctx, const char *service, const gss_OID nametype)
 {
 	gss_buffer_desc	 name;
 	OM_uint32	 maj, min;
+
+	if (!ctx)
+		return;
 
 	/* XXXrcd: sanity?  check if we are an initiator? */
 
@@ -947,6 +972,9 @@ knc_import_set_hb_service(knc_ctx ctx, const char *hostservice,
 	char	*hbservice;
 	char	*tmp;
 
+	if (!ctx)
+		return;
+
 	tmp = strchr(hostservice, '@');
 	if (tmp) {
 		knc_import_set_service(ctx, hostservice,
@@ -970,6 +998,9 @@ void
 knc_set_cb(knc_ctx ctx, gss_channel_bindings_t cb)
 {
 
+	if (!ctx)
+		return;
+
 	/* XXXrcd: caller frees? */
 
 	ctx->cb = cb;
@@ -979,6 +1010,9 @@ void
 knc_set_req_mech(knc_ctx ctx, gss_OID req_mech)
 {
 
+	if (!ctx)
+		return;
+
 	/* XXXrcd: memory management?? */
 
 	ctx->req_mech = req_mech;
@@ -987,6 +1021,10 @@ knc_set_req_mech(knc_ctx ctx, gss_OID req_mech)
 gss_OID
 knc_get_ret_mech(knc_ctx ctx)
 {
+
+	if (!ctx)
+		return GSS_C_NO_OID;
+
 	/* XXXrcd: sanity */
 
 	return ctx->ret_mech;
@@ -995,6 +1033,10 @@ knc_get_ret_mech(knc_ctx ctx)
 void
 knc_set_req_flags(knc_ctx ctx, OM_uint32 req_flags)
 {
+
+	if (!ctx)
+		return;
+
 	/* XXXrcd: sanity */
 
 	ctx->req_flags = req_flags;
@@ -1003,6 +1045,10 @@ knc_set_req_flags(knc_ctx ctx, OM_uint32 req_flags)
 OM_uint32
 knc_get_ret_flags(knc_ctx ctx)
 {
+
+	if (!ctx)
+		return 0;
+
 	/* XXXrcd: sanity */
 
 	return ctx->ret_flags;
@@ -1011,6 +1057,10 @@ knc_get_ret_flags(knc_ctx ctx)
 void
 knc_set_time_req(knc_ctx ctx, OM_uint32 time_req)
 {
+
+	if (!ctx)
+		return;
+
 	/* XXXrcd: sanity */
 
 	ctx->time_req = time_req;
@@ -1019,6 +1069,10 @@ knc_set_time_req(knc_ctx ctx, OM_uint32 time_req)
 OM_uint32
 knc_get_time_rec(knc_ctx ctx)
 {
+
+	if (!ctx)
+		return 0;
+
 	/* XXXrcd: sanity */
 
 	return ctx->time_rec;
@@ -1027,6 +1081,10 @@ knc_get_time_rec(knc_ctx ctx)
 gss_name_t
 knc_get_client(knc_ctx ctx)
 {
+
+	if (!ctx)
+		return GSS_C_NO_NAME;
+
 	/* XXXrcd: sanity */
 
 	return ctx->client;
@@ -1035,6 +1093,10 @@ knc_get_client(knc_ctx ctx)
 gss_cred_id_t
 knc_get_deleg_cred(knc_ctx ctx)
 {
+
+	if (!ctx)
+		return GSS_C_NO_CREDENTIAL;
+
 	/* XXXrcd: sanity */
 
 	return ctx->deleg_cred;
@@ -1045,6 +1107,9 @@ knc_get_deleg_cred(knc_ctx ctx)
 void
 knc_accept(knc_ctx ctx)
 {
+
+	if (!ctx)
+		return;
 
 	/* XXXrcd: sanity! */
 
@@ -1331,6 +1396,9 @@ int
 knc_put_buf(knc_ctx ctx, int dir, const void *buf, size_t len)
 {
 
+	if (!ctx)
+		return 0;
+
 	return knc_put_stream(knc_find_buf(ctx, KNC_SIDE_IN, dir), buf, len);
 }
 
@@ -1338,6 +1406,11 @@ int
 knc_put_ubuf(knc_ctx ctx, int dir, void *buf, size_t len,
 	     void (*callback)(void *, void *), void *cookie)
 {
+
+	if (!ctx) {
+		/* XXXrcd: should probably call the callback to free things. */
+		return 0;
+	}
 
 	return knc_put_stream_userbuf(knc_find_buf(ctx, KNC_SIDE_IN, dir),
 	    buf, len, callback, cookie);
@@ -1348,6 +1421,11 @@ knc_put_mmapbuf(knc_ctx ctx, int dir, size_t len, int flags, int fd,
 		off_t offset)
 {
 
+	if (!ctx) {
+		/* XXXrcd: should probably call the callback to free things. */
+		return 0;
+	}
+
 	return knc_put_stream_mmapbuf(knc_find_buf(ctx, KNC_SIDE_IN, dir),
 	    len, flags, fd, offset);
 }
@@ -1356,12 +1434,18 @@ int
 knc_get_ibuf(knc_ctx ctx, int dir, void **buf, size_t len)
 {
 
+	if (!ctx)
+		return 0;
+
 	return knc_get_istream(knc_find_buf(ctx, KNC_SIDE_IN, dir), buf, len);
 }
 
 int
 knc_get_obuf(knc_ctx ctx, int dir, void **buf, size_t len)
 {
+
+	if (!ctx)
+		return 0;
 
 	return knc_get_ostream(knc_find_buf(ctx, KNC_SIDE_OUT, dir), buf, len);
 }
@@ -1370,12 +1454,18 @@ int
 knc_get_obufv(knc_ctx ctx, int dir, struct iovec **vec, int *count)
 {
 
+	if (!ctx)
+		return 0;
+
 	return knc_get_ostreamv(knc_find_buf(ctx,KNC_SIDE_OUT,dir), vec, count);
 }
 
 int
 knc_drain_buf(knc_ctx ctx, int dir, int len)
 {
+
+	if (!ctx)
+		return 0;
 
 	return knc_stream_drain(knc_find_buf(ctx, KNC_SIDE_OUT, dir), len);
 }
@@ -1384,6 +1474,9 @@ int
 knc_fill_buf(knc_ctx ctx, int dir, int len)
 {
 
+	if (!ctx)
+		return 0;
+
 	return knc_stream_fill(knc_find_buf(ctx, KNC_SIDE_IN, dir), len);
 }
 
@@ -1391,6 +1484,9 @@ size_t
 knc_pending(knc_ctx ctx, int dir)
 {
 	int	ret;
+
+	if (!ctx)
+		return 0;
 
 //	if (ctx->state != STATE_SESSION)
 //		return 0;
@@ -1405,6 +1501,9 @@ void
 knc_initiate(knc_ctx ctx)
 {
 	char		 tmp[] = "";
+
+	if (!ctx)
+		return;
 
 	/* XXXrcd: sanity! */
 
@@ -1571,6 +1670,9 @@ knc_set_net_fds(knc_ctx ctx, int rfd, int wfd)
 {
 	struct fd_cookie	*cookie;
 
+	if (!ctx)
+		return;
+
 	/* XXXrcd: should we look for existing read/writev/close? */
 
 	cookie = malloc(sizeof(*cookie));
@@ -1603,7 +1705,7 @@ int
 knc_get_net_rfd(knc_ctx ctx)
 {
 
-	if (ctx->net_uses_fd)
+	if (ctx && ctx->net_uses_fd)
 		return ((struct fd_cookie *)ctx->netcookie)->rfd;
 
 	return -1;
@@ -1613,7 +1715,7 @@ int
 knc_get_net_wfd(knc_ctx ctx)
 {
 
-	if (ctx->net_uses_fd)
+	if (ctx && ctx->net_uses_fd)
 		return ((struct fd_cookie *)ctx->netcookie)->wfd;
 
 	return -1;
@@ -1623,13 +1725,16 @@ int
 knc_net_is_open(knc_ctx ctx)
 {
 
-	return ctx->net_uses_fd && ctx->net_is_open;
+	return ctx && ctx->net_uses_fd && ctx->net_is_open;
 }
 
 void
 knc_set_local_fds(knc_ctx ctx, int rfd, int wfd)
 {
 	struct fd_cookie	*cookie;
+
+	if (!ctx)
+		return;
 
 	/* XXXrcd: should we look for existing read/writev/close? */
 
@@ -1663,7 +1768,7 @@ int
 knc_get_local_rfd(knc_ctx ctx)
 {
 
-	if (ctx->local_uses_fd)
+	if (ctx && ctx->local_uses_fd)
 		return ((struct fd_cookie *)ctx->localcookie)->rfd;
 
 	return -1;
@@ -1673,7 +1778,7 @@ int
 knc_get_local_wfd(knc_ctx ctx)
 {
 
-	if (ctx->local_uses_fd)
+	if (ctx && ctx->local_uses_fd)
 		return ((struct fd_cookie *)ctx->localcookie)->wfd;
 
 	return -1;
@@ -1683,12 +1788,15 @@ int
 knc_local_is_open(knc_ctx ctx)
 {
 
-	return ctx->local_uses_fd && ctx->local_is_open;
+	return ctx && ctx->local_uses_fd && ctx->local_is_open;
 }
 
 int
 knc_need_input(knc_ctx ctx, int dir)
 {
+
+	if (!ctx)
+		return 0;
 
 	/*
 	 * We only check the amount of data we have decrypted, because
@@ -1706,6 +1814,9 @@ int
 knc_can_output(knc_ctx ctx, int dir)
 {
 
+	if (!ctx)
+		return 0;
+
 	return knc_pending(ctx, dir) > 0;
 }
 
@@ -1718,6 +1829,9 @@ nfds_t
 knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs, nfds_t nfds)
 {
 	nfds_t	i = 0;
+
+	if (!ctx)
+		return 0;
 
 	if (ctx->net_uses_fd && ctx->net_is_open) {
 		if (knc_need_input(ctx, KNC_DIR_RECV)) {
@@ -1766,6 +1880,9 @@ knc_service_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs,
 		    nfds_t nfds)
 {
 	size_t	i;
+
+	if (!ctx)
+		return;
 
 	for (i=0; i < nfds; i++) {
 		short	revents = fds[i].revents;
@@ -1996,6 +2113,9 @@ knc_authenticate(knc_ctx ctx)
 	nfds_t		nfds;
 	int		ret;
 
+	if (!ctx)
+		return;
+
 	while (!knc_is_authenticated(ctx) && !knc_error(ctx)) {
 		nfds = knc_get_pollfds(ctx, fds, cbs, 4);
                 ret = poll(fds, nfds, -1);
@@ -2041,6 +2161,11 @@ internal_read(knc_ctx ctx, void *buf, size_t len, int full)
 	int	 err;
 
 	DEBUG(("knc_read: about to read.\n"));
+
+	if (!ctx) {
+		errno = EBADF;
+		return -1;
+	}
 
 	/*
 	 * We attempt to return data before we initiate a
@@ -2125,7 +2250,12 @@ knc_write(knc_ctx ctx, const void *buf, size_t len)
 {
 	ssize_t	ret;
 
-	if (!ctx || ctx->error) {
+	if (!ctx) {
+		errno = EBADF;
+		return -1;
+	}
+
+	if (ctx->error) {
 		errno = EIO;
 		return -1;
 	}
