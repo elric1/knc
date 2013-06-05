@@ -678,27 +678,31 @@ knc_stream_garbage_collect(struct knc_stream *s)
 static ssize_t
 read_packet(struct knc_stream *s, void **buf)
 {
-	uint32_t len;
-	void	*tmp;
+	size_t		 len;
+	uint32_t	 wirelen;
+	void		*tmp;
 
 	DEBUG(("read_packet: enter\n"));
-	if (knc_stream_avail(s) < 4)
+
+	if (knc_get_ostream_contig(s, &tmp, 4) < 4)
 		return -1;
 
-	DEBUG(("read_packet: 4 bytes are available\n"));
-	knc_get_ostream_contig(s, &tmp, 4);
-	len = ntohl(*((uint32_t *)tmp));
+	wirelen = ntohl(*((uint32_t *)tmp));
 
-	DEBUG(("read_packet: got len = %u\n", len));
-	if (knc_stream_avail(s) < (size_t)len + 4)
+	DEBUG(("read_packet: got wirelen = %u\n", wirelen));
+	if (knc_stream_avail(s) < (size_t)wirelen + 4)
 		return -1;
 
 	knc_stream_drain(s, 4);
 
 	/* Okay, now we know that we've got an entire packet */
 
-	DEBUG(("read_packet: getting %u bytes\n", len));
-	len = knc_get_ostream_contig(s, buf, len);
+	DEBUG(("read_packet: getting %u bytes\n", wirelen));
+	len = knc_get_ostream_contig(s, buf, wirelen);
+
+	if (len != wirelen)
+		abort();	/* XXXrcd: really shouldn't happen. */
+
 	knc_stream_drain(s, len);
 
 	DEBUG(("read_packet: %zu left in stream\n", s->avail));
