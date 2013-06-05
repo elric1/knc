@@ -1894,7 +1894,7 @@ knc_fill(knc_ctx ctx, int dir)
 		return EINVAL;
 
 	/* XXXrcd: hardcoded constant */
-	len = knc_get_ibuf(ctx, dir, &tmpbuf, 128 * 1024);
+	len = knc_get_ibuf(ctx, dir, &tmpbuf, 16 * 1024);
 
 	DEBUG(("knc_fill: about to read %zd bytes.\n", len));
 
