@@ -2224,7 +2224,7 @@ internal_read(knc_ctx ctx, void *buf, size_t len, int full)
 
 		ret = reads_get_buf(ctx, (char *)buf + total, len - total);
 		total += ret;
-		if (!full || total == (ssize_t)len)
+		if ((!full && total > 0) || total == (ssize_t)len)
 			return total;
 	}
 
