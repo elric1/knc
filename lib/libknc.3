@@ -254,7 +254,8 @@ on the credential when the context is destroyed.
 sets the service to which to authenticate.
 The library will call
 .Fn gss_release_name
-on the service when the context is destroyed.
+on the service when the context is destroyed.  This is ignored on the
+service side; call this only on the client side.
 .It Fn knc_import_set_service ctx service nametype
 also sets the server to which to authenticate but it will also
 call
