@@ -1154,6 +1154,21 @@ knc_get_deleg_cred(knc_ctx ctx)
 	return ctx->deleg_cred;
 }
 
+void
+knc_free_deleg_cred(knc_ctx ctx)
+{
+	OM_uint32 min;
+
+	if (!ctx)
+		return GSS_C_NO_CREDENTIAL;
+
+	gss_release_cred(&min, &ctx->deleg_cred);
+
+	/* XXXrcd: sanity */
+
+	return ctx->deleg_cred;
+}
+
 /* XXXrcd: deal with all the flags */
 
 void

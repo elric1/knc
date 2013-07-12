@@ -73,6 +73,8 @@
 .Fn knc_get_time_rec "knc_ctx ctx"
 .Ft gss_cred_id_t
 .Fn knc_get_deleg_cred "knc_ctx ctx"
+.Ft void
+.Fn knc_free_deleg_cred "knc_ctx ctx"
 .Ft int
 .Fn knc_get_net_rfd "knc_ctx ctx"
 .Ft int
@@ -249,7 +251,8 @@ or
 .Fn gss_accept_sec_context .
 The library will call
 .Fn gss_release_cred
-on the credential when the context is destroyed.
+on the credential when the context is destroyed, and on any previously set
+credential.
 .It Fn knc_set_service ctx gssname
 sets the service to which to authenticate.
 The library will call
@@ -356,6 +359,14 @@ or
 returns the delegated credential returned by
 .Fn gss_accept_sec_context .
 The credential is freed by the library when the context is closed.
+.It Fn knc_free_deleg_cred
+frees the delegated credential returned by
+.Fn gss_accept_sec_context .
+Do not use the delegated credential handle returned by
+.Fn knc_get_deleg_cred
+after calling
+.Fn knc_free_deleg_cred .
+Use this function to drop access to privileged material (delegated credentials).
 .It Fn knc_get_net_rfd ctx
 returns the read fd associated with the network side of the context or -1
 if no fd is associated.
