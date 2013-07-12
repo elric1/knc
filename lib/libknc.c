@@ -83,8 +83,8 @@ struct knc_ctx {
 	gss_channel_bindings_t	 cb;		/* both */
 	gss_OID			 req_mech;	/* request mech (initiator) */
 	gss_OID			 ret_mech;	/* returned mech (both) */
-	gss_name_t		 client;	/* only set for an acceptor */
-	gss_name_t		 service;	/* only set for an initiator */
+	gss_name_t		 client;	/* both */
+	gss_name_t		 service;       /* both */
 	OM_uint32		 req_flags;	/* initiator */
 	OM_uint32		 ret_flags;	/* both */
 	OM_uint32		 time_req;	/* initiator */
@@ -95,6 +95,7 @@ struct knc_ctx {
 	int			 opts;
 
 	int			 open;
+	int			 locally_initiated;
 #define OPEN_READ	0x10
 #define OPEN_WRITE	0x20
 	int			 state;
@@ -786,11 +787,12 @@ knc_ctx_close(knc_ctx ctx)
 		gss_release_cred(&min, &ctx->cred);
 
 	if (ctx->deleg_cred != GSS_C_NO_CREDENTIAL)
-		/* XXXrcd: we should probably free this earlier. */
 		gss_release_cred(&min, &ctx->deleg_cred);
 
+	if (ctx->client != GSS_C_NO_NAME)
+		gss_release_name(&min, &ctx->client);
+
 	if (ctx->service != GSS_C_NO_NAME)
-		/* XXXrcd: we should probably free this earlier. */
 		gss_release_name(&min, &ctx->service);
 
 	if (ctx->gssctx != GSS_C_NO_CONTEXT)
@@ -1101,13 +1103,41 @@ knc_get_time_rec(knc_ctx ctx)
 gss_name_t
 knc_get_client(knc_ctx ctx)
 {
+	OM_uint32	 maj;
+	OM_uint32	 min;
 
 	if (!ctx)
 		return GSS_C_NO_NAME;
 
+	if (ctx->client == GSS_C_NO_NAME && ctx->locally_initiated) {
+	    maj = gss_inquire_context(&min, ctx->gssctx, &ctx->client,
+		NULL, NULL, NULL, NULL, NULL, NULL);
+	    KNC_GSS_ERROR(ctx, maj, min, GSS_C_NO_NAME, "gss_inquire_context");
+	}
+
 	/* XXXrcd: sanity */
 
 	return ctx->client;
+}
+
+gss_name_t
+knc_get_service(knc_ctx ctx)
+{
+	OM_uint32	 maj;
+	OM_uint32	 min;
+
+	if (!ctx)
+		return GSS_C_NO_NAME;
+
+	if (ctx->service == GSS_C_NO_NAME && ctx->locally_initiated) {
+	    maj = gss_inquire_context(&min, ctx->gssctx, NULL, &ctx->service,
+		NULL, NULL, NULL, NULL, NULL);
+	    KNC_GSS_ERROR(ctx, maj, min, GSS_C_NO_NAME, "gss_inquire_context");
+	}
+
+	/* XXXrcd: sanity */
+
+	return ctx->service;
 }
 
 gss_cred_id_t
@@ -1151,6 +1181,7 @@ knc_state_init(knc_ctx ctx, void *buf, size_t len)
 	out.length = 0;
 
 	KNCDEBUG(ctx, ("knc_state_init: enter\n"));
+	ctx->locally_initiated = 1;
 	maj = gss_init_sec_context(&min, ctx->cred, &ctx->gssctx,
 	    ctx->service, ctx->req_mech, ctx->req_flags, ctx->time_req,
 	    ctx->cb, &in, &ctx->ret_mech, &out, &ctx->ret_flags,
@@ -1199,6 +1230,10 @@ knc_state_accept(knc_ctx ctx, void *buf, size_t len)
 
 	if (!(maj & GSS_S_CONTINUE_NEEDED))
 		ctx->state = STATE_SESSION;
+
+	/* So knc_get_service() will inquire it if called */
+	if (ctx->service != GSS_C_NO_NAME)
+	    gss_release_name(&min, &ctx->service);
 
 	return 0;
 }

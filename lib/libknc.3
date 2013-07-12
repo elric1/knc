@@ -41,9 +41,10 @@
 .Ss Examining and Altering Contexts
 .Ft int
 .Fn knc_is_authenticated "knc_ctx ctx"
-.Ft void
 .Ft gss_name_t
 .Fn knc_get_client "knc_ctx ctx"
+.Ft gss_name_t
+.Fn knc_get_service "knc_ctx ctx"
 .Fn knc_set_cred "knc_ctx ctx" "gss_cred_id_t cred"
 .Ft void
 .Fn knc_set_service "knc_ctx ctx" "gss_name_t gssname"
@@ -328,7 +329,9 @@ functions can be used to query the connexion state:
 .It Fn knc_is_authenticated ctx
 returns true if the connexion has been established.
 .It Fn knc_get_client
-returns the client who connected.
+returns the client's name.  Do not release this function's return value.
+.It Fn knc_get_service
+returns the service's name.  Do not release this function's return value.
 .It Fn knc_get_ret_mech ctx
 returns the GSS mechanism returned by either
 .Fn gss_accept_sec_context
