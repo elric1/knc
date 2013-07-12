@@ -172,8 +172,14 @@ information over the socket to the server process.
 .Pp
 For launched executables, the current environment variables are defined:
 .Bl -tag -width "KNC_REMOTE_PORT" -offset indent
+.It Ev KNC_MECH
+Either "krb5" if the mechanism used was Kerberos or the hex-encoded form
+of the mechanism OID.
 .It Ev KNC_CREDS
-The full principal of the remote counterparty.
+The principal name of the remote counterparty, in display form.
+.It Ev KNC_EXPORTED_CREDS
+The principal name of the remote counterparty, in exported name token
+form and hex-encoded.
 .It Ev KNC_REMOTE_IP
 The IP address of the
 .Nm

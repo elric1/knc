@@ -82,6 +82,8 @@ typedef struct work_s {
 	write_buffer_t		network_buffer;
 
 	char *			credentials;
+	char *			exported_credentials;
+	char *			mech;
 	void *			context;
 
 	/* for clients */

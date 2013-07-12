@@ -662,7 +662,9 @@ int
 handshake(work_t *work) {
 	if (prefs.is_listener) {
 		if ((work->context = gstd_accept(work->network_fd,
-					 &work->credentials)) == NULL)
+					 &work->credentials,
+					 &work->exported_credentials,
+					 &work->mech)) == NULL)
 			return 0;
 		else
 			return 1;
@@ -1329,7 +1331,10 @@ do_work(work_t *work, int argc, char **argv) {
 
 	/* send the credentials to our daemon side */
 
-	if (!(send_creds(local, work, "CREDS", work->credentials)	&&
+	if (!(send_creds(local, work, "MECH", work->mech)		&&
+	      send_creds(local, work, "CREDS", work->credentials)	&&
+	      send_creds(local, work, "EXPORTED_CREDS",
+			 work->exported_credentials)			&&
 	      send_creds(local, work, "REMOTE_IP",
 			 inet_ntoa(work->network_addr.sin_addr))	&&
 	      send_creds(local, work, "REMOTE_PORT", port_as_string)	&&

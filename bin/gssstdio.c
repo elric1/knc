@@ -95,6 +95,7 @@ static int	gstd_errstring(char **, int);
 
 #define FREE_NOTNULL(x)	if (x) free(x)
 
+static
 char *
 gstd_get_display_name(gss_name_t client) {
 	OM_uint32	maj;
@@ -119,16 +120,95 @@ gstd_get_display_name(gss_name_t client) {
 	return ret;
 }
 
+static
+char *
+gstd_get_exported_name(gss_name_t client) {
+	OM_uint32	maj;
+	OM_uint32	min;
+	gss_buffer_desc	buf;
+	unsigned char   *bufp;
+	unsigned char   nibble;
+	char		*ret;
+	size_t	  i, k;
+
+	maj = gss_export_name(&min, client, &buf);
+	GSTD_GSS_ERROR(maj, min, NULL, "gss_export_name");
+
+	if ((ret = (char *)malloc(buf.length * 2 + 1)) == NULL) {
+		LOG(LOG_ERR, ("unable to malloc"));
+		gss_release_buffer(&min, &buf);
+		return NULL;
+	}
+
+	for (bufp = buf.value, i = 0, k = 0; i < buf.length; i++) {
+		nibble = bufp[i] >> 4;
+		ret[k++] = nibble < 10 ? "0123456789"[nibble] : "ABCDEF"[nibble];
+		nibble = bufp[i] & 0x0f;
+		ret[k++] = nibble < 10 ? "0123456789"[nibble] : "ABCDEF"[nibble];
+	}
+
+	ret[k] = '\0';
+	gss_release_buffer(&min, &buf);
+
+	return ret;
+}
+
+#define KNC_KRB5_MECH_OID "\052\206\110\206\367\022\001\002\002"
+
+static
+char *
+gstd_get_mech(gss_OID mech_oid) {
+	OM_uint32	maj;
+	OM_uint32	min;
+	gss_buffer_desc	buf;
+	unsigned char   *bufp;
+	unsigned char   nibble;
+	char		*ret;
+	size_t	  i, k;
+
+	if (mech_oid->length = sizeof(KNC_KRB5_MECH_OID) - 1 &&
+	    memcmp(mech_oid->elements, KNC_KRB5_MECH_OID,
+               sizeof(KNC_KRB5_MECH_OID) - 1) == 0) {
+	    if ((ret = strdup("krb5")) == NULL) {
+		LOG(LOG_ERR, ("unable to malloc"));
+		return NULL;
+	    }
+	}
+
+        /*
+         * XXXnico: We should decode the OID and output it in
+         * "1.2.3.4.5" form.  Hex-encoding it is lame.
+         */
+	if ((ret = (char *)malloc(mech_oid->length * 2 + 1)) == NULL) {
+		LOG(LOG_ERR, ("unable to malloc"));
+		return NULL;
+	}
+
+	for (bufp = mech_oid->elements, i = 0, k = 0; i < buf.length; i++) {
+		nibble = bufp[i] >> 4;
+		ret[k++] = nibble < 10 ? "0123456789"[nibble] : "ABCDEF"[nibble];
+		nibble = bufp[i] & 0x0f;
+		ret[k++] = nibble < 10 ? "0123456789"[nibble] : "ABCDEF"[nibble];
+	}
+
+	ret[k] = '\0';
+
+	return ret;
+}
+
 void *
-gstd_accept(int fd, char **display_creds)
+gstd_accept(int fd, char **display_creds, char **exported_creds, char **mech)
 {
-	gss_name_t client;
+	gss_name_t	 client;
+	gss_OID		 mech_oid;
 	struct gstd_tok *tok;
 	gss_ctx_id_t	 ctx = GSS_C_NO_CONTEXT;
 	gss_buffer_desc	 in, out;
 	OM_uint32	 maj, min;
-	int		ret;
+	int		 ret;
 
+	*display_creds = NULL;
+	*exported_creds = NULL;
 	out.length = 0;
 	in.length = 0;
 again:
@@ -139,7 +219,7 @@ again:
 		return NULL;
 
 	maj = gss_accept_sec_context(&min, &ctx, GSS_C_NO_CREDENTIAL,
-	    &in, GSS_C_NO_CHANNEL_BINDINGS, &client, NULL, &out, NULL,
+	    &in, GSS_C_NO_CHANNEL_BINDINGS, &client, &mech_oid, &out, NULL,
 	    NULL, NULL);
 
 	if (out.length && write_packet(fd, &out)) {
@@ -153,6 +233,9 @@ again:
 		goto again;
 
 	*display_creds = gstd_get_display_name(client);
+	*exported_creds = gstd_get_exported_name(client);
+	*mech = gstd_get_mech(mech_oid);
+
 	gss_release_name(&min, &client);
 	SETUP_GSTD_TOK(tok, ctx, fd, "gstd_accept");
 	return tok;
