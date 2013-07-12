@@ -2142,13 +2142,13 @@ knc_authenticate(knc_ctx ctx)
 
 	while (!knc_is_authenticated(ctx) && !knc_error(ctx)) {
 		nfds = knc_get_pollfds(ctx, fds, cbs, 4);
-                ret = poll(fds, nfds, -1);
-                if (ret == -1) {
+		ret = poll(fds, nfds, -1);
+		if (ret == -1) {
 			knc_syscall_error(ctx, "poll", errno);
-                        break;
-                }
-                knc_service_pollfds(ctx, fds, cbs, nfds);
-                knc_garbage_collect(ctx);
+			break;
+		}
+		knc_service_pollfds(ctx, fds, cbs, nfds);
+		knc_garbage_collect(ctx);
 	}
 }
 
