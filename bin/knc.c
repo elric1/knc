@@ -1332,7 +1332,8 @@ do_work(work_t *work, int argc, char **argv) {
 	/* send the credentials to our daemon side */
 
 	if (!(send_creds(local, work, "MECH", work->mech)		&&
-	      send_creds(local, work, "CREDS", work->credentials)	&&
+	      (strcmp(work->mech, "krb5") != 0			||
+	       send_creds(local, work, "CREDS", work->credentials))	&&
 	      send_creds(local, work, "EXPORTED_CREDS",
 			 work->exported_credentials)			&&
 	      send_creds(local, work, "REMOTE_IP",
