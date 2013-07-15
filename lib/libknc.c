@@ -943,19 +943,12 @@ knc_set_cred(knc_ctx ctx, gss_cred_id_t cred)
 void
 knc_set_service(knc_ctx ctx, gss_name_t service)
 {
+	OM_uint32 maj, min;
 
 	if (!ctx)
 		return;
 
-	/* XXXrcd: sanity?  check if we are an initiator? */
-
-	if (!ctx)
-		return;
-
-#if 0
-	if (ctx->service)
-		gss_release_name(...);	XXXrcd
-#endif
+	maj = gss_release_name(&min, &ctx->service);
 
 	ctx->service = service;
 }
@@ -1035,8 +1028,6 @@ knc_set_req_mech(knc_ctx ctx, gss_OID req_mech)
 	if (!ctx)
 		return;
 
-	/* XXXrcd: memory management?? */
-
 	ctx->req_mech = req_mech;
 }
 
@@ -1046,8 +1037,6 @@ knc_get_ret_mech(knc_ctx ctx)
 
 	if (!ctx)
 		return GSS_C_NO_OID;
-
-	/* XXXrcd: sanity */
 
 	return ctx->ret_mech;
 }
@@ -1060,6 +1049,10 @@ knc_set_req_flags(knc_ctx ctx, OM_uint32 req_flags)
 		return;
 
 	/* XXXrcd: sanity */
+	/*
+	 * XXXnico: we shouldn't allow this once we've produced or
+	 * consumed one context token.
+	 */
 
 	ctx->req_flags = req_flags;
 }
@@ -1070,8 +1063,6 @@ knc_get_ret_flags(knc_ctx ctx)
 
 	if (!ctx)
 		return 0;
-
-	/* XXXrcd: sanity */
 
 	return ctx->ret_flags;
 }
@@ -1084,6 +1075,10 @@ knc_set_time_req(knc_ctx ctx, OM_uint32 time_req)
 		return;
 
 	/* XXXrcd: sanity */
+	/*
+	 * XXXnico: we shouldn't allow this once we've produced or
+	 * consumed one context token.
+	 */
 
 	ctx->time_req = time_req;
 }
@@ -1096,6 +1091,10 @@ knc_get_time_rec(knc_ctx ctx)
 		return 0;
 
 	/* XXXrcd: sanity */
+	/*
+	 * XXXnico: we should allow this only once we have a fully
+	 * established security context.
+	 */
 
 	return ctx->time_rec;
 }
@@ -1108,6 +1107,11 @@ knc_get_client(knc_ctx ctx)
 
 	if (!ctx)
 		return GSS_C_NO_NAME;
+
+	/*
+	 * XXXnico: we should allow this only once we have a fully
+	 * established security context.
+	 */
 
 	if (ctx->client == GSS_C_NO_NAME && ctx->locally_initiated) {
 		maj = gss_inquire_context(&min, ctx->gssctx, &ctx->client,
@@ -1130,6 +1134,11 @@ knc_get_service(knc_ctx ctx)
 	if (!ctx)
 		return GSS_C_NO_NAME;
 
+	/*
+	 * XXXnico: we should allow this only once we have a fully
+	 * established security context.
+	 */
+
 	if (ctx->service == GSS_C_NO_NAME && ctx->locally_initiated) {
 		maj = gss_inquire_context(&min, ctx->gssctx, NULL,
 		    &ctx->service, NULL, NULL, NULL, NULL, NULL);
@@ -1148,8 +1157,6 @@ knc_get_deleg_cred(knc_ctx ctx)
 
 	if (!ctx)
 		return GSS_C_NO_CREDENTIAL;
-
-	/* XXXrcd: sanity */
 
 	return ctx->deleg_cred;
 }
