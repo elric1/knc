@@ -153,6 +153,10 @@ gstd_get_exported_name(gss_name_t client) {
 	return ret;
 }
 
+#ifndef HAVE_GSS_OID_TO_STR
+#error "we don't have our own gss_oid_to_str() yet"
+#endif
+
 #define KNC_KRB5_MECH_OID "\052\206\110\206\367\022\001\002\002"
 
 static
@@ -164,7 +168,7 @@ gstd_get_mech(gss_OID mech_oid) {
 	unsigned char   *bufp;
 	unsigned char   nibble;
 	char		*ret;
-	size_t	  i, k;
+	size_t	        i, k;
 
 	if (mech_oid->length = sizeof(KNC_KRB5_MECH_OID) - 1 &&
 	    memcmp(mech_oid->elements, KNC_KRB5_MECH_OID,
@@ -173,26 +177,16 @@ gstd_get_mech(gss_OID mech_oid) {
 		LOG(LOG_ERR, ("unable to malloc"));
 		return NULL;
 	    }
+            return ret;
 	}
 
-        /*
-         * XXXnico: We should decode the OID and output it in
-         * "1.2.3.4.5" form.  Hex-encoding it is lame.
-         */
-	if ((ret = (char *)malloc(mech_oid->length * 2 + 1)) == NULL) {
-		LOG(LOG_ERR, ("unable to malloc"));
-		return NULL;
-	}
-
-	for (bufp = mech_oid->elements, i = 0, k = 0; i < buf.length; i++) {
-		nibble = bufp[i] >> 4;
-		ret[k++] = nibble < 10 ? "0123456789"[nibble] : "ABCDEF"[nibble];
-		nibble = bufp[i] & 0x0f;
-		ret[k++] = nibble < 10 ? "0123456789"[nibble] : "ABCDEF"[nibble];
-	}
-
-	ret[k] = '\0';
-
+        maj = gss_oid_to_str(&min, mech_oid, &buf);
+        if (maj != GSS_S_COMPLETE) {
+            LOG(LOG_ERR, ("unable to display mechanism OID"));
+            return NULL;
+        }
+        if ((ret = strndup(buf.value, buf.length)) == NULL)
+            LOG(LOG_ERR, ("unable to malloc"));
 	return ret;
 }
 

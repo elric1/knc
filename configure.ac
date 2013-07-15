@@ -36,6 +36,8 @@ AC_CHECK_HEADERS([gssapi/gssapi_krb5.h gssapi/gssapi.h gssapi.h ], break,,)
 
 AC_SEARCH_LIBS(gss_init_sec_context, [gssapi gssapi_krb5],,,)
 
+AC_CHECK_FUNCS([gss_oid_to_str])
+
 #
 # We only enable warnings if --enable-developer is specified.
 
