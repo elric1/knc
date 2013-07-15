@@ -168,25 +168,25 @@ gstd_get_mech(gss_OID mech_oid) {
 	unsigned char   *bufp;
 	unsigned char   nibble;
 	char		*ret;
-	size_t	        i, k;
+	size_t		i, k;
 
 	if (mech_oid->length = sizeof(KNC_KRB5_MECH_OID) - 1 &&
-	    memcmp(mech_oid->elements, KNC_KRB5_MECH_OID,
-               sizeof(KNC_KRB5_MECH_OID) - 1) == 0) {
-	    if ((ret = strdup("krb5")) == NULL) {
-		LOG(LOG_ERR, ("unable to malloc"));
-		return NULL;
-	    }
-            return ret;
+		memcmp(mech_oid->elements, KNC_KRB5_MECH_OID,
+		   sizeof(KNC_KRB5_MECH_OID) - 1) == 0) {
+		if ((ret = strdup("krb5")) == NULL) {
+			LOG(LOG_ERR, ("unable to malloc"));
+			return NULL;
+		}
+		return ret;
 	}
 
-        maj = gss_oid_to_str(&min, mech_oid, &buf);
-        if (maj != GSS_S_COMPLETE) {
-            LOG(LOG_ERR, ("unable to display mechanism OID"));
-            return NULL;
-        }
-        if ((ret = strndup(buf.value, buf.length)) == NULL)
-            LOG(LOG_ERR, ("unable to malloc"));
+	maj = gss_oid_to_str(&min, mech_oid, &buf);
+	if (maj != GSS_S_COMPLETE) {
+		LOG(LOG_ERR, ("unable to display mechanism OID"));
+		return NULL;
+	}
+	if ((ret = strndup(buf.value, buf.length)) == NULL)
+		LOG(LOG_ERR, ("unable to malloc"));
 	return ret;
 }
 
