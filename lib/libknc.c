@@ -1163,10 +1163,7 @@ knc_free_deleg_cred(knc_ctx ctx)
 		return GSS_C_NO_CREDENTIAL;
 
 	gss_release_cred(&min, &ctx->deleg_cred);
-
-	/* XXXrcd: sanity */
-
-	return ctx->deleg_cred;
+	return;
 }
 
 /* XXXrcd: deal with all the flags */
