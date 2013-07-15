@@ -142,9 +142,9 @@ gstd_get_exported_name(gss_name_t client) {
 
 	for (bufp = buf.value, i = 0, k = 0; i < buf.length; i++) {
 		nibble = bufp[i] >> 4;
-		ret[k++] = nibble < 10 ? "0123456789"[nibble] : "ABCDEF"[nibble];
+		ret[k++] = "0123456789ABCDEF"[nibble];
 		nibble = bufp[i] & 0x0f;
-		ret[k++] = nibble < 10 ? "0123456789"[nibble] : "ABCDEF"[nibble];
+		ret[k++] = "0123456789ABCDEF"[nibble];
 	}
 
 	ret[k] = '\0';
