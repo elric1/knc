@@ -83,8 +83,10 @@ struct knc_ctx {
 	gss_channel_bindings_t	 cb;		/* both */
 	gss_OID			 req_mech;	/* request mech (initiator) */
 	gss_OID			 ret_mech;	/* returned mech (both) */
-	gss_name_t		 client;	/* both */
-	gss_name_t		 service;       /* both */
+	gss_name_t		 client;	/* acceptor only; we own */
+	gss_name_t		 service;	/* initiator only */
+	gss_name_t		 imp_service;	/* initiator only; we own */
+	gss_name_t		 inq_service;	/* both; we own */
 	OM_uint32		 req_flags;	/* initiator */
 	OM_uint32		 ret_flags;	/* both */
 	OM_uint32		 time_req;	/* initiator */
@@ -748,16 +750,20 @@ knc_ctx_init(void)
 
 	/* Set some reasonable defaults */
 
-	ret->gssctx	= GSS_C_NO_CONTEXT;
-	ret->client	= GSS_C_NO_NAME;
-	ret->cred	= GSS_C_NO_CREDENTIAL;
-	ret->cb		= GSS_C_NO_CHANNEL_BINDINGS;
-	ret->req_mech   = GSS_C_NO_OID;
-	ret->ret_mech   = GSS_C_NO_OID;
-	ret->req_flags  = GSS_C_MUTUAL_FLAG | GSS_C_SEQUENCE_FLAG;
-	ret->deleg_cred = GSS_C_NO_CREDENTIAL;
+	ret->gssctx		= GSS_C_NO_CONTEXT;
+	ret->client		= GSS_C_NO_NAME;
+	ret->service		= GSS_C_NO_NAME;
+	ret->imp_service	= GSS_C_NO_NAME;
+	ret->inq_service	= GSS_C_NO_NAME;
+	ret->cred		= GSS_C_NO_CREDENTIAL;
+	ret->cb			= GSS_C_NO_CHANNEL_BINDINGS;
+	ret->req_mech   	= GSS_C_NO_OID;
+	ret->ret_mech   	= GSS_C_NO_OID;
+	ret->req_flags		= GSS_C_MUTUAL_FLAG | GSS_C_SEQUENCE_FLAG;
+	ret->deleg_cred		= GSS_C_NO_CREDENTIAL;
 
 	ret->open = OPEN_READ|OPEN_WRITE;
+	ret->locally_initiated	= 0;
 
 	ret->recvinbufsiz = 16384;
 	ret->sendinbufsiz = 16384;
@@ -782,27 +788,20 @@ knc_ctx_close(knc_ctx ctx)
 	if (!ctx)
 		return;
 
-	if (ctx->cred != GSS_C_NO_CREDENTIAL)
-		/* XXXrcd: Hmmm, well, maybe not---we didn't allocate it. */
-		gss_release_cred(&min, &ctx->cred);
+	/* We only own the deleg cred */
+	gss_release_cred(&min, &ctx->deleg_cred);
 
-	if (ctx->deleg_cred != GSS_C_NO_CREDENTIAL)
-		gss_release_cred(&min, &ctx->deleg_cred);
+	/* We always own ctx->client */
+	gss_release_name(&min, &ctx->client);
 
-	if (ctx->client != GSS_C_NO_NAME)
-		gss_release_name(&min, &ctx->client);
+	/* We don't own ctx->service */
+	gss_release_name(&min, &ctx->imp_service);
+	gss_release_name(&min, &ctx->inq_service);
 
-	if (ctx->service != GSS_C_NO_NAME)
-		gss_release_name(&min, &ctx->service);
+	/* We always own the security context */
+	gss_delete_sec_context(&min, &ctx->gssctx, GSS_C_NO_BUFFER);
 
-	if (ctx->gssctx != GSS_C_NO_CONTEXT)
-		gss_delete_sec_context(&min, &ctx->gssctx, GSS_C_NO_BUFFER);
-
-#if 0
-	if (ctx->cb != GSS_C_NO_CHANNEL_BINDINGS) {
-		/* XXXrcd: hmmm, caller deals with this? */
-	}
-#endif
+	/* The caller owns the channel bindings */
 
 	if (ctx->net_is_open && ctx->netclose)
 		(ctx->netclose)(ctx->netcookie);
@@ -811,6 +810,7 @@ knc_ctx_close(knc_ctx ctx)
 		(ctx->localclose)(ctx->localcookie);
 
 	/* XXXrcd: memory leaks?  */
+	/* XXXnico: smartass comment: use valgrind */
 
 	free(ctx->errstr);
 
@@ -929,13 +929,9 @@ knc_is_authenticated(knc_ctx ctx)
 void
 knc_set_cred(knc_ctx ctx, gss_cred_id_t cred)
 {
-	OM_uint32	min;
 
 	if (!ctx)
 		return;
-
-	if (ctx->cred != GSS_C_NO_CREDENTIAL)
-		gss_release_cred(&min, &ctx->cred);
 
 	ctx->cred = cred;
 }
@@ -943,12 +939,9 @@ knc_set_cred(knc_ctx ctx, gss_cred_id_t cred)
 void
 knc_set_service(knc_ctx ctx, gss_name_t service)
 {
-	OM_uint32 maj, min;
 
 	if (!ctx)
 		return;
-
-	maj = gss_release_name(&min, &ctx->service);
 
 	ctx->service = service;
 }
@@ -963,6 +956,8 @@ knc_import_set_service(knc_ctx ctx, const char *service, const gss_OID nt)
 		return;
 
 	/* XXXrcd: sanity?  check if we are an initiator? */
+	if (knc_is_authenticated(ctx))
+		return;
 
 	name.length = strlen(service);
 	name.value  = strdup(service);	/* strdup to avoid const lossage */
@@ -972,7 +967,8 @@ knc_import_set_service(knc_ctx ctx, const char *service, const gss_OID nt)
 		return;
 	}
 
-	maj = gss_import_name(&min, &name, nt, &ctx->service);
+	maj = gss_import_name(&min, &name, nt, &ctx->imp_service);
+	ctx->service = ctx->imp_service;
 
 	free(name.value);
 
@@ -1087,14 +1083,8 @@ OM_uint32
 knc_get_time_rec(knc_ctx ctx)
 {
 
-	if (!ctx)
+	if (!ctx || !knc_authenticated(ctx))
 		return 0;
-
-	/* XXXrcd: sanity */
-	/*
-	 * XXXnico: we should allow this only once we have a fully
-	 * established security context.
-	 */
 
 	return ctx->time_rec;
 }
@@ -1105,22 +1095,18 @@ knc_get_client(knc_ctx ctx)
 	OM_uint32	 maj;
 	OM_uint32	 min;
 
-	if (!ctx)
+	if (!ctx || !knc_is_authenticated(ctx))
 		return GSS_C_NO_NAME;
 
-	/*
-	 * XXXnico: we should allow this only once we have a fully
-	 * established security context.
-	 */
+	if (ctx->client != GSS_C_NO_NAME || !ctx->locally_initiated)
+	    return ctx->client;
 
-	if (ctx->client == GSS_C_NO_NAME && ctx->locally_initiated) {
+	if (ctx->client == GSS_C_NO_NAME) {
 		maj = gss_inquire_context(&min, ctx->gssctx, &ctx->client,
 		    NULL, NULL, NULL, NULL, NULL, NULL);
 		KNC_GSS_ERROR(ctx, maj, min, GSS_C_NO_NAME,
 		    "gss_inquire_context");
 	}
-
-	/* XXXrcd: sanity */
 
 	return ctx->client;
 }
@@ -1131,24 +1117,17 @@ knc_get_service(knc_ctx ctx)
 	OM_uint32	 maj;
 	OM_uint32	 min;
 
-	if (!ctx)
+	if (!ctx || !knc_is_authenticated(ctx))
 		return GSS_C_NO_NAME;
 
-	/*
-	 * XXXnico: we should allow this only once we have a fully
-	 * established security context.
-	 */
-
-	if (ctx->service == GSS_C_NO_NAME && ctx->locally_initiated) {
+	if (ctx->inq_service == GSS_C_NO_NAME && ctx->locally_initiated) {
 		maj = gss_inquire_context(&min, ctx->gssctx, NULL,
-		    &ctx->service, NULL, NULL, NULL, NULL, NULL);
+		    &ctx->inq_service, NULL, NULL, NULL, NULL, NULL);
 		KNC_GSS_ERROR(ctx, maj, min, GSS_C_NO_NAME,
 		    "gss_inquire_context");
 	}
 
-	/* XXXrcd: sanity */
-
-	return ctx->service;
+	return ctx->inq_service;
 }
 
 gss_cred_id_t
@@ -1167,7 +1146,7 @@ knc_free_deleg_cred(knc_ctx ctx)
 	OM_uint32 min;
 
 	if (!ctx)
-		return GSS_C_NO_CREDENTIAL;
+		return;
 
 	gss_release_cred(&min, &ctx->deleg_cred);
 	return;
@@ -1251,10 +1230,6 @@ knc_state_accept(knc_ctx ctx, void *buf, size_t len)
 
 	if (!(maj & GSS_S_CONTINUE_NEEDED))
 		ctx->state = STATE_SESSION;
-
-	/* So knc_get_service() will inquire it if called */
-	if (ctx->service != GSS_C_NO_NAME)
-		gss_release_name(&min, &ctx->service);
 
 	return 0;
 }
