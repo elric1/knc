@@ -959,7 +959,7 @@ knc_set_service(knc_ctx ctx, gss_name_t service)
 }
 
 void
-knc_import_set_service(knc_ctx ctx, const char *service, const gss_OID nametype)
+knc_import_set_service(knc_ctx ctx, const char *service, const gss_OID nt)
 {
 	gss_buffer_desc	 name;
 	OM_uint32	 maj, min;
@@ -977,7 +977,7 @@ knc_import_set_service(knc_ctx ctx, const char *service, const gss_OID nametype)
 		return;
 	}
 
-	maj = gss_import_name(&min, &name, nametype, &ctx->service);
+	maj = gss_import_name(&min, &name, nt, &ctx->service);
 
 	free(name.value);
 
@@ -1849,7 +1849,8 @@ static void _flush_recv(knc_ctx ctx) { knc_flush(ctx, KNC_DIR_RECV, 0); }
 /* XXXrcd: arg, -1 ain't no nfds_t but we need to return errors... */
 
 nfds_t
-knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs, nfds_t nfds)
+knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs,
+		nfds_t nfds)
 {
 	nfds_t	i = 0;
 
@@ -2214,7 +2215,7 @@ internal_read(knc_ctx ctx, void *buf, size_t len, int full)
 
 	for (;;) {
 		fillerr = knc_fill(ctx, KNC_DIR_RECV);
- 
+
 		switch (fillerr) {
 		case 0:
 			/* mmm, no error, let's go. */

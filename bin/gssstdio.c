@@ -409,7 +409,7 @@ read_packet(int fd, gss_buffer_t buf)
 	if (ret == -1) {
 		if (errno == EINTR || errno == EAGAIN)
 			return -2;
-		
+
 		LOG(LOG_ERR, ("%s", strerror(errno)));
 		return -1;
 	}
