@@ -24,6 +24,7 @@
  */
 
 #include <sys/mman.h>
+#include <sys/uio.h>
 
 #include <poll.h>
 
