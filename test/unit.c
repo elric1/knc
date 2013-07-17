@@ -38,11 +38,11 @@
 #include <libknc.h>
 
 int runserver(int);
-int runclient(int, char *, char *);
+int runclient(int, const char *);
 int knc_loop(knc_ctx, int);
 
 /*
- * unitknc: a simple test of the libknc.
+ * unit: a simple test of the libknc.
  *
  * The idea here is that we fork and the child assumes the role of a
  * KNC server whilst the parent assumes the role of a KNC client connecting
@@ -58,8 +58,8 @@ main(int argc, char **argv)
 	int	kidret;
 	int	ret;
 
-	if (argc != 3) {
-		fprintf(stderr, "Usage: unitknc service hostname\n");
+	if (argc != 2) {
+		fprintf(stderr, "Usage: unit hostservice\n");
 		exit(1);
 	}
 
@@ -81,7 +81,7 @@ main(int argc, char **argv)
 		exit(1);
 	default:
 		close(fds[1]);
-		ret = runclient(fds[0], argv[1], argv[2]);
+		ret = runclient(fds[0], argv[1]);
 		break;
 	}
 
@@ -120,7 +120,7 @@ runserver(int fd)
 }
 
 int
-runclient(int fd, char *service, char *hostname)
+runclient(int fd, const char *hostservice)
 {
 	knc_ctx ctx;
 
@@ -128,7 +128,7 @@ runclient(int fd, char *service, char *hostname)
 
 	ctx = knc_ctx_init();
 
-	knc_import_set_hb_service(ctx, hostname, service);
+	knc_import_set_hb_service(ctx, hostservice, NULL);
 	knc_set_net_fd(ctx, fd);
 	knc_initiate(ctx);
 
