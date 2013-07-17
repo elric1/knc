@@ -1083,7 +1083,7 @@ OM_uint32
 knc_get_time_rec(knc_ctx ctx)
 {
 
-	if (!ctx || !knc_authenticated(ctx))
+	if (!ctx || !knc_is_authenticated(ctx))
 		return 0;
 
 	return ctx->time_rec;
