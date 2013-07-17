@@ -1469,10 +1469,8 @@ knc_put_mmapbuf(knc_ctx ctx, int dir, size_t len, int flags, int fd,
 		off_t offset)
 {
 
-	if (!ctx) {
-		/* XXXrcd: should probably call the callback to free things. */
+	if (!ctx)
 		return 0;
-	}
 
 	return knc_put_stream_mmapbuf(knc_find_buf(ctx, KNC_SIDE_IN, dir),
 	    len, flags, fd, offset);
