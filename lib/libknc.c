@@ -166,6 +166,7 @@ struct fd_cookie {
 
 #define MIN(a, b)	((a)<(b)?(a):(b))
 
+#ifdef LOW_LEVEL_DEBUGGERY
 /* XXXrcd: eventually get rid of DEBUG() */
 int debug = 0;
 #define DEBUG(x) do {				\
@@ -173,6 +174,9 @@ int debug = 0;
 			debug_printf x ;	\
 		}				\
 	} while (0/*CONSTCOND*/)
+#else
+#define DEBUG(x)
+#endif
 
 #define KNCDEBUG(c, x) do {			\
 		if ((c)->debug) {		\
