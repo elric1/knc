@@ -95,9 +95,9 @@ static int	gstd_errstring(char **, int);
 
 #define FREE_NOTNULL(x)	if (x) free(x)
 
-static
-char *
-gstd_get_display_name(gss_name_t client) {
+static char *
+gstd_get_display_name(gss_name_t client)
+{
 	OM_uint32	maj;
 	OM_uint32	min;
 	gss_buffer_desc	buf;
@@ -120,9 +120,9 @@ gstd_get_display_name(gss_name_t client) {
 	return ret;
 }
 
-static
-char *
-gstd_get_exported_name(gss_name_t client) {
+static char *
+gstd_get_exported_name(gss_name_t client)
+{
 	OM_uint32	maj;
 	OM_uint32	min;
 	gss_buffer_desc	buf;
@@ -159,9 +159,9 @@ gstd_get_exported_name(gss_name_t client) {
 
 #define KNC_KRB5_MECH_OID "\052\206\110\206\367\022\001\002\002"
 
-static
-char *
-gstd_get_mech(gss_OID mech_oid) {
+static char *
+gstd_get_mech(gss_OID mech_oid)
+{
 	OM_uint32	maj;
 	OM_uint32	min;
 	gss_buffer_desc	buf;
@@ -171,8 +171,8 @@ gstd_get_mech(gss_OID mech_oid) {
 	size_t		i, k;
 
 	if (mech_oid->length = sizeof(KNC_KRB5_MECH_OID) - 1 &&
-		memcmp(mech_oid->elements, KNC_KRB5_MECH_OID,
-		   sizeof(KNC_KRB5_MECH_OID) - 1) == 0) {
+	    memcmp(mech_oid->elements, KNC_KRB5_MECH_OID,
+	    sizeof(KNC_KRB5_MECH_OID) - 1) == 0) {
 		if ((ret = strdup("krb5")) == NULL) {
 			LOG(LOG_ERR, ("unable to malloc"));
 			return NULL;
