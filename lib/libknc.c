@@ -114,6 +114,7 @@ struct knc_ctx {
 #define KNC_ERROR_PIPE		0x4
 #define KNC_ERROR_NOCTX		0x5
 #define KNC_ERROR_ENOMEM	0x6
+#define KNC_ERROR_GENERIC	0x7
 	char			*errstr;
 
 	size_t			 recvinbufsiz;	/* XXXrcd: low water? */
@@ -186,6 +187,7 @@ static void	debug_printf(const char *, ...)
 
 static void	knc_generic_error(knc_ctx, const char *);
 static void	knc_syscall_error(knc_ctx, const char *, int);
+static void	knc_enomem(knc_ctx);
 static void	knc_gss_error(knc_ctx, OM_uint32, OM_uint32, const char *);
 
 static struct knc_stream_bit	*knc_alloc_stream_bit(size_t);
@@ -963,7 +965,7 @@ knc_import_set_service(knc_ctx ctx, const char *service, const gss_OID nt)
 	name.value  = strdup(service);	/* strdup to avoid const lossage */
 
 	if (!name.value) {
-		knc_generic_error(ctx, "out of memory");
+		knc_enomem(ctx);
 		return;
 	}
 
@@ -995,7 +997,7 @@ knc_import_set_hb_service(knc_ctx ctx, const char *hostservice,
 
 	hbservice = malloc(strlen(hostservice) + strlen(defservice) + 2);
 	if (!hbservice) {
-		knc_generic_error(ctx, "out of memory");
+		knc_enomem(ctx);
 		return;
 	}
 
@@ -1041,14 +1043,11 @@ void
 knc_set_req_flags(knc_ctx ctx, OM_uint32 req_flags)
 {
 
-	if (!ctx)
+	if (!ctx || knc_is_authenticated(ctx))
 		return;
 
-	/* XXXrcd: sanity */
-	/*
-	 * XXXnico: we shouldn't allow this once we've produced or
-	 * consumed one context token.
-	 */
+	/* XXXrcd: more sanity: are we an initiator? */
+	/* XXXrcd: really, we shouldn't allow after we've begun to auth */
 
 	ctx->req_flags = req_flags;
 }
@@ -1067,14 +1066,11 @@ void
 knc_set_time_req(knc_ctx ctx, OM_uint32 time_req)
 {
 
-	if (!ctx)
+	if (!ctx || knc_is_authenticated(ctx))
 		return;
 
-	/* XXXrcd: sanity */
-	/*
-	 * XXXnico: we shouldn't allow this once we've produced or
-	 * consumed one context token.
-	 */
+	/* XXXrcd: sanity: are we an initiator? */
+	/* XXXrcd: really, we shouldn't allow after we've begun to auth */
 
 	ctx->time_req = time_req;
 }
@@ -1728,10 +1724,10 @@ knc_set_net_fds(knc_ctx ctx, int rfd, int wfd)
 	/* XXXrcd: should we look for existing read/writev/close? */
 
 	cookie = malloc(sizeof(*cookie));
-	/*
-	 * XXXrcd: errors! Maybe we should use a static data structure
-	 *         inside knc_ctx for this.
-	 */
+	if (!cookie) {
+		knc_enomem(ctx);
+		return;
+	}
 
 	cookie->mine = 0;
 	cookie->rfd  = rfd;
@@ -1791,10 +1787,10 @@ knc_set_local_fds(knc_ctx ctx, int rfd, int wfd)
 	/* XXXrcd: should we look for existing read/writev/close? */
 
 	cookie = malloc(sizeof(*cookie));
-	/*
-	 * XXXrcd: errors! Maybe we should use a static data structure
-	 *         inside knc_ctx for this.
-	 */
+	if (!cookie) {
+		knc_enomem(ctx);
+		return;
+	}
 
 	cookie->mine = 0;
 	cookie->rfd  = rfd;
@@ -1894,7 +1890,7 @@ knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs,
 			fds[i].fd	= knc_get_net_rfd(ctx);
 			fds[i++].events	= POLLIN;
 			if (i >= nfds)
-				return -1;
+				return (nfds_t)-1;
 		}
 
 		if (knc_can_output(ctx, KNC_DIR_SEND)) {
@@ -1902,7 +1898,7 @@ knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs,
 			fds[i].fd	= knc_get_net_wfd(ctx);
 			fds[i++].events = POLLOUT;
 			if (i >= nfds)
-				return -1;
+				return (nfds_t)-1;
 		}
 	}
 
@@ -1917,7 +1913,7 @@ knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs,
 			fds[i].fd	 = knc_get_local_rfd(ctx);
 			fds[i++].events	 = POLLIN;
 			if (i >= nfds)
-				return -1;
+				return (nfds_t)-1;
 		}
 
 		if (knc_can_output(ctx, KNC_DIR_RECV) > 0) {
@@ -1973,7 +1969,7 @@ knc_connect(knc_ctx ctx, const char *hostservice,
 
 	buf = strdup(hostservice);
 	if (!buf) {
-		knc_generic_error(ctx, "out of memory");
+		knc_enomem(ctx);
 		return ctx;
 	}
 
@@ -2071,7 +2067,10 @@ knc_fill(knc_ctx ctx, int dir)
 
 	/* XXXrcd: hardcoded constant */
 	len = knc_get_ibuf(ctx, dir, &tmpbuf, 16 * 1024);
-	/* XXXrcd: if len == 0, what should we do? */
+	if (!len) {
+		knc_enomem(ctx);
+		return ENOMEM;
+	}
 
 	KNCDEBUG(ctx, ("knc_fill: about to read %zd bytes.\n", len));
 
@@ -2346,7 +2345,7 @@ knc_errstring(OM_uint32 maj_stat, OM_uint32 min_stat, const char *preamble)
 	char		*str = NULL;
 	char		*tmp = NULL;
 
-	cur_stat =maj_stat;
+	cur_stat = maj_stat;
 	type = GSS_C_GSS_CODE;
 
 	for (;;) {
@@ -2411,7 +2410,7 @@ knc_generic_error(knc_ctx ctx, const char *str)
 {
 
 	/* XXXrcd: wrong type */
-	ctx->error  = KNC_ERROR_GSS;
+	ctx->error  = KNC_ERROR_GENERIC;
 	ctx->errstr = strdup(str);
 }
 
@@ -2443,4 +2442,11 @@ knc_gss_error(knc_ctx ctx, OM_uint32 maj_stat, OM_uint32 min_stat,
 	if (!ctx->errstr)
 		ctx->errstr = strdup("Failed to construct GSS error");
 	KNCDEBUG(ctx, ("knc_gss_error: %s\n", ctx->errstr));
+}
+
+static void
+knc_enomem(knc_ctx ctx)
+{
+
+	knc_syscall_error(ctx, "Out of memory", ENOMEM);
 }
