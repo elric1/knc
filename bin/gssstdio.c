@@ -153,17 +153,15 @@ gstd_get_exported_name(gss_name_t client)
 	return ret;
 }
 
-#ifndef HAVE_GSS_OID_TO_STR
-#error "we don't have our own gss_oid_to_str() yet"
-#endif
-
 #define KNC_KRB5_MECH_OID "\052\206\110\206\367\022\001\002\002"
 
 static char *
 gstd_get_mech(gss_OID mech_oid)
 {
+#ifdef HAVE_GSS_OID_TO_STR
 	OM_uint32	maj;
 	OM_uint32	min;
+#endif
 	gss_buffer_desc	buf;
 	unsigned char   *bufp;
 	unsigned char   nibble;
@@ -180,12 +178,17 @@ gstd_get_mech(gss_OID mech_oid)
 		return ret;
 	}
 
+#ifdef HAVE_GSS_OID_TO_STR
 	maj = gss_oid_to_str(&min, mech_oid, &buf);
 	if (maj != GSS_S_COMPLETE) {
 		LOG(LOG_ERR, ("unable to display mechanism OID"));
 		return NULL;
 	}
-	if ((ret = strndup(buf.value, buf.length)) == NULL)
+	ret = strndup(buf.value, buf.length);
+#else
+	ret = strdup("");
+#endif
+	if (!ret)
 		LOG(LOG_ERR, ("unable to malloc"));
 	return ret;
 }
