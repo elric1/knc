@@ -94,8 +94,8 @@ struct knc_ctx {
 	/* Connexion state data */
 	int			 opts;
 
-	int			 open;
 	int			 locally_initiated;
+	int			 open;
 #define OPEN_READ	0x10
 #define OPEN_WRITE	0x20
 	int			 state;
@@ -1110,9 +1110,10 @@ knc_get_client(knc_ctx ctx)
 		return GSS_C_NO_NAME;
 
 	if (ctx->client == GSS_C_NO_NAME && ctx->locally_initiated) {
-	    maj = gss_inquire_context(&min, ctx->gssctx, &ctx->client,
-		NULL, NULL, NULL, NULL, NULL, NULL);
-	    KNC_GSS_ERROR(ctx, maj, min, GSS_C_NO_NAME, "gss_inquire_context");
+		maj = gss_inquire_context(&min, ctx->gssctx, &ctx->client,
+		    NULL, NULL, NULL, NULL, NULL, NULL);
+		KNC_GSS_ERROR(ctx, maj, min, GSS_C_NO_NAME,
+		    "gss_inquire_context");
 	}
 
 	/* XXXrcd: sanity */
@@ -1130,9 +1131,10 @@ knc_get_service(knc_ctx ctx)
 		return GSS_C_NO_NAME;
 
 	if (ctx->service == GSS_C_NO_NAME && ctx->locally_initiated) {
-	    maj = gss_inquire_context(&min, ctx->gssctx, NULL, &ctx->service,
-		NULL, NULL, NULL, NULL, NULL);
-	    KNC_GSS_ERROR(ctx, maj, min, GSS_C_NO_NAME, "gss_inquire_context");
+		maj = gss_inquire_context(&min, ctx->gssctx, NULL,
+		    &ctx->service, NULL, NULL, NULL, NULL, NULL);
+		KNC_GSS_ERROR(ctx, maj, min, GSS_C_NO_NAME,
+		    "gss_inquire_context");
 	}
 
 	/* XXXrcd: sanity */
@@ -1233,7 +1235,7 @@ knc_state_accept(knc_ctx ctx, void *buf, size_t len)
 
 	/* So knc_get_service() will inquire it if called */
 	if (ctx->service != GSS_C_NO_NAME)
-	    gss_release_name(&min, &ctx->service);
+		gss_release_name(&min, &ctx->service);
 
 	return 0;
 }
