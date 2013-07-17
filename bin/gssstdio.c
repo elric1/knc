@@ -121,7 +121,7 @@ gstd_get_display_name(gss_name_t client)
 }
 
 static char *
-gstd_get_exported_name(gss_name_t client)
+gstd_get_export_name(gss_name_t client)
 {
 	OM_uint32	maj;
 	OM_uint32	min;
@@ -194,7 +194,7 @@ gstd_get_mech(gss_OID mech_oid)
 }
 
 void *
-gstd_accept(int fd, char **display_creds, char **exported_creds, char **mech)
+gstd_accept(int fd, char **display_creds, char **export_name, char **mech)
 {
 	gss_name_t	 client;
 	gss_OID		 mech_oid;
@@ -205,7 +205,7 @@ gstd_accept(int fd, char **display_creds, char **exported_creds, char **mech)
 	int		 ret;
 
 	*display_creds = NULL;
-	*exported_creds = NULL;
+	*export_name = NULL;
 	out.length = 0;
 	in.length = 0;
 again:
@@ -230,7 +230,7 @@ again:
 		goto again;
 
 	*display_creds = gstd_get_display_name(client);
-	*exported_creds = gstd_get_exported_name(client);
+	*export_name = gstd_get_export_name(client);
 	*mech = gstd_get_mech(mech_oid);
 
 	gss_release_name(&min, &client);

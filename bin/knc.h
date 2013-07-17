@@ -82,7 +82,7 @@ typedef struct work_s {
 	write_buffer_t		network_buffer;
 
 	char *			credentials;
-	char *			exported_credentials;
+	char *			export_name;
 	char *			mech;
 	void *			context;
 

@@ -663,7 +663,7 @@ handshake(work_t *work) {
 	if (prefs.is_listener) {
 		if ((work->context = gstd_accept(work->network_fd,
 					 &work->credentials,
-					 &work->exported_credentials,
+					 &work->export_name,
 					 &work->mech)) == NULL)
 			return 0;
 		else
@@ -1334,8 +1334,7 @@ do_work(work_t *work, int argc, char **argv) {
 	if (!(send_creds(local, work, "MECH", work->mech)		&&
 	      (strcmp(work->mech, "krb5") != 0			||
 	       send_creds(local, work, "CREDS", work->credentials))	&&
-	      send_creds(local, work, "EXPORTED_CREDS",
-			 work->exported_credentials)			&&
+	      send_creds(local, work, "EXPORT_NAME", work->export_name)	&&
 	      send_creds(local, work, "REMOTE_IP",
 			 inet_ntoa(work->network_addr.sin_addr))	&&
 	      send_creds(local, work, "REMOTE_PORT", port_as_string)	&&
