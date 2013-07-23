@@ -113,7 +113,7 @@ runserver(int fd)
 
 	ctx = knc_ctx_init();
 
-	knc_set_net_fd(ctx, fd);
+	knc_give_net_fd(ctx, fd);
 	knc_accept(ctx);
 
 	return knc_loop(ctx, 1);
@@ -129,7 +129,7 @@ runclient(int fd, const char *hostservice)
 	ctx = knc_ctx_init();
 
 	knc_import_set_hb_service(ctx, hostservice, NULL);
-	knc_set_net_fd(ctx, fd);
+	knc_give_net_fd(ctx, fd);
 	knc_initiate(ctx);
 
 	return knc_loop(ctx, 0);
@@ -165,11 +165,8 @@ knc_loop(knc_ctx ctx, int server)
 		if (knc_error(ctx))
 			break;
 
-		if (!knc_net_is_open(ctx)) {
-			fprintf(stderr, "%s: Other end unexpectedly closed.\n",
-			    server?"S":"C");
+		if (knc_io_complete(ctx))
 			break;
-		}
 
 		/*
 		 * The data that we are sending and receiving is a simple
@@ -210,8 +207,10 @@ knc_loop(knc_ctx ctx, int server)
 		if (valrecv >= TEST_SIZE)
 			do_recv = 0;
 
-		if (valsend >= TEST_SIZE)
+		if (do_send && valsend >= TEST_SIZE) {
+			knc_put_eof(ctx, KNC_DIR_SEND);
 			do_send = 0;
+		}
 
 
 		nfds = knc_get_pollfds(ctx, fds, cbs, 4);
@@ -223,11 +222,6 @@ knc_loop(knc_ctx ctx, int server)
 		}
 
 		knc_service_pollfds(ctx, fds, cbs, nfds);
-
-		knc_garbage_collect(ctx);
-
-		if (!do_send && !do_recv && !knc_pending(ctx, KNC_DIR_SEND))
-			break;
 	}
 
 	fprintf(stderr, "%s: loop done  (% 6d), "
@@ -242,7 +236,7 @@ knc_loop(knc_ctx ctx, int server)
 		ret = 1;
 	}
 
-	close(knc_get_net_rfd(ctx));	/* XXXrcd: should be internal? */
+	knc_close(ctx);
 	knc_ctx_close(ctx);
 	return ret;
 }

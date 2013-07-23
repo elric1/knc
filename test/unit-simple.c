@@ -76,7 +76,7 @@ main(int argc, char **argv)
 	case  0:
 		close(fds[0]);
 		ret = runserver(fds[1]);
-		fprintf(stderr, "Child exiting.\n");
+		fprintf(stderr, "Child exiting = %d\n", ret);
 		exit(ret);
 	case -1:
 		perror("fork");
@@ -95,8 +95,12 @@ main(int argc, char **argv)
 	if (ret)
 		fprintf(stderr, "Parent failed.\n");
 
-	if (kidret)
-		fprintf(stderr, "Child failed.\n");
+	if (WIFEXITED(kidret) && WEXITSTATUS(kidret) != 0)
+		fprintf(stderr, "Child failed = %d\n", WEXITSTATUS(kidret));
+
+	if (WIFSIGNALED(kidret))
+		fprintf(stderr, "Child got hit with a %d sig%s.\n",
+		    WTERMSIG(kidret), WCOREDUMP(kidret)?"(core dumped)":"");
 
 	fprintf(stderr, "Parent exiting.\n");
 
@@ -104,6 +108,22 @@ main(int argc, char **argv)
 		return 1;
 
 	return 0;
+}
+
+static void
+no_sigpipe(int s)
+{
+#ifdef O_NOSIGPIPE
+	int	flags;
+
+	flags = fcntl(s, F_GETFL, 0);
+
+	flags |= O_NOSIGPIPE;
+	fcntl(s, F_SETFL, flags);
+#else
+	/* This code path will have bugs... */
+	return 0;
+#endif
 }
 
 int
@@ -114,19 +134,19 @@ runserver(int fd)
 	uint32_t	len;
 	char		byte;
 
-	fprintf(stderr, "runserver(), pid == %d\n", getpid());
+	fprintf(stderr, "S: pid == %d\n", getpid());
+
+	no_sigpipe(fd);
 
 	ctx = knc_ctx_init();
 
-//knc_set_debug(ctx, 1);
-
-	knc_set_net_fd(ctx, fd);
+	knc_give_net_fd(ctx, fd);
 	knc_accept(ctx);
 
 	knc_authenticate(ctx);
 
 	if (knc_error(ctx)) {
-		fprintf(stderr, "knc_authenticate: %s\n", knc_errstr(ctx));
+		fprintf(stderr, "S: knc_authenticate: %s\n", knc_errstr(ctx));
 		exit(1);
 	}
 
@@ -136,8 +156,14 @@ runserver(int fd)
 		knc_fullread(ctx, &len, 4);
 
 		if (knc_error(ctx)) {
-			fprintf(stderr, "knc_fullread: %s\n", knc_errstr(ctx));
+			fprintf(stderr, "S: knc_fullread: %s\n",
+			    knc_errstr(ctx));
 			exit(1);
+		}
+
+		if (knc_eof(ctx)) {
+			fprintf(stderr, "S: got EOF exiting\n");
+			break;
 		}
 
 #if 0
@@ -164,6 +190,7 @@ runserver(int fd)
 			buf = malloc(len);
 			/* XXXrcd: errors */
 			ret = knc_fullread(ctx, buf, len);
+			free(buf);
 		}
 #endif
 
@@ -171,8 +198,8 @@ runserver(int fd)
 		knc_write(ctx, &byte, 1);
 	}
 
-	close(fd);
-	knc_ctx_close(ctx);
+	knc_close(ctx);
+	knc_ctx_destroy(ctx);
 	return 0;
 }
 
@@ -182,20 +209,20 @@ runclient(int fd, const char *hostservice)
 	knc_ctx ctx;
 	int	i;
 
-	fprintf(stderr, "runclient(), pid == %d\n", getpid());
+	fprintf(stderr, "C: pid == %d\n", getpid());
+
+	no_sigpipe(fd);
 
 	ctx = knc_ctx_init();
 
 	knc_import_set_hb_service(ctx, hostservice, NULL);
-	knc_set_net_fd(ctx, fd);
+	knc_give_net_fd(ctx, fd);
 	knc_initiate(ctx);
-
-//knc_set_debug(ctx, 1);
 
 	knc_authenticate(ctx);
 
 	if (knc_error(ctx)) {
-		fprintf(stderr, "knc_authenticate: %s\n", knc_errstr(ctx));
+		fprintf(stderr, "C: knc_authenticate: %s\n", knc_errstr(ctx));
 		exit(1);
 	}
 
@@ -207,13 +234,20 @@ runclient(int fd, const char *hostservice)
 		char		 byte;
 		char		*buf;
 
-		if (knc_error(ctx))
-			fprintf(stderr, "client: %s\n", knc_errstr(ctx));
+		if (knc_error(ctx)) {
+			fprintf(stderr, "C: %s\n", knc_errstr(ctx));
+			break;
+		}
+
+		if (knc_eof(ctx)) {
+			fprintf(stderr, "C: other end closed\n");
+			break;
+		}
 
 		offset = random() % 140000;
 		len    = random() %  70000;
 
-		fprintf(stderr, "Sending blob %d of len %u\n", i, len);
+		fprintf(stderr, "C: Sending blob %d of len %u\n", i, len);
 
 		knc_write(ctx, &byte, 1);
 		knc_write(ctx, &offset, 4);
@@ -221,7 +255,7 @@ runclient(int fd, const char *hostservice)
 
 		buf = malloc(len);
 		if (!buf)
-			perror("malloc");
+			perror("C: malloc");
 
 		for (j=0; j < len; j++)
 			buf[j] = j % 255;
@@ -235,11 +269,11 @@ runclient(int fd, const char *hostservice)
 		ret = knc_fullread(ctx, &byte, 1);
 
 		if (ret != 1)
-			fprintf(stderr, "knc_fullread() = %d: %s\n", ret,
+			fprintf(stderr, "C: knc_fullread() = %d: %s\n", ret,
 			    strerror(errno));
 	}
 
-	close(fd);
-	knc_ctx_close(ctx);
+	knc_close(ctx);
+	knc_ctx_destroy(ctx);
 	return 0;
 }

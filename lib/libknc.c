@@ -54,6 +54,10 @@
 #include "libknc.h"
 
 struct knc_stream_bit {
+	int			  type;
+#define	STREAM_BUFFER	0x1
+#define STREAM_COMMAND	0x2
+/* XXXrcd: we may want to push errors onto the streams, too? */
 	void			 *buf;
 	void			(*free)(void *, void *);
 	void			 *cookie;
@@ -135,14 +139,12 @@ struct knc_ctx {
 	 */
 
 	int	  net_uses_fd;
-	int	  net_is_open;
 	void	 *netcookie;
 	ssize_t	(*netread)(void *, void *, size_t);
 	ssize_t	(*netwritev)(void *, const struct iovec *, int);
 	int	(*netclose)(void *);
 
 	int	  local_uses_fd;
-	int	  local_is_open;
 	void	 *localcookie;
 	ssize_t	(*localread)(void *, void *, size_t);
 	ssize_t	(*localwritev)(void *, const struct iovec *, int);
@@ -194,7 +196,7 @@ static void	knc_syscall_error(knc_ctx, const char *, int);
 static void	knc_enomem(knc_ctx);
 static void	knc_gss_error(knc_ctx, OM_uint32, OM_uint32, const char *);
 
-static struct knc_stream_bit	*knc_alloc_stream_bit(size_t);
+static struct knc_stream_bit	*knc_alloc_stream_bit(int, size_t);
 static size_t			 knc_append_stream_bit(struct knc_stream *,
 				    struct knc_stream_bit *);
 
@@ -212,7 +214,8 @@ static void	knc_stream_garbage_collect(struct knc_stream *);
 
 static int	socket_options(int, int);
 static size_t	read_packet(struct knc_stream *, void **b);
-static size_t	put_packet(struct knc_stream *, gss_buffer_t);
+static size_t	put_packet(knc_ctx, gss_buffer_t);
+static size_t	wrap_and_put_packet(knc_ctx, char *, size_t);
 
 static int	knc_state_init(knc_ctx, void *, size_t);
 static int	knc_state_accept(knc_ctx, void *, size_t);
@@ -271,7 +274,7 @@ knc_append_stream_bit(struct knc_stream *s, struct knc_stream_bit *b)
 #define STREAM_BIT_ALLOC_UNIT	(64 * 1024)
 
 static struct knc_stream_bit *
-knc_alloc_stream_bit(size_t len)
+knc_alloc_stream_bit(int type, size_t len)
 {
 	struct knc_stream_bit	*bit;
 	char			*tmpbuf;
@@ -290,9 +293,10 @@ knc_alloc_stream_bit(size_t len)
 		return NULL;
 	}
 
-	bit->buf       = tmpbuf;
-	bit->len       = 0;
-	bit->allocated = len;
+	bit->type	= type;
+	bit->buf	= tmpbuf;
+	bit->len	= 0;
+	bit->allocated	= len;
 
 	return bit;
 }
@@ -407,6 +411,61 @@ knc_put_stream_mmapbuf(struct knc_stream *s, size_t len, int flags, int fd,
 }
 
 static size_t
+knc_put_stream_command(struct knc_stream *s, void *buf, size_t len)
+{
+	struct knc_stream_bit	*tmp;
+
+	/* Must mark current one as being full, innit? */
+
+	if (s->tail)
+		s->tail->allocated = s->tail->len;
+
+	/*
+	 * XXXrcd: might be an idea to use a new alloc which doesn't
+	 *         try to make a buffer that we can grow into per se.
+	 */
+	tmp = knc_alloc_stream_bit(STREAM_COMMAND, len);
+	if (!tmp)
+		return 0;
+
+	memcpy(tmp->buf, buf, len);
+	tmp->len = len;
+	tmp->allocated = len;
+
+	knc_append_stream_bit(s, tmp);
+
+	return len;
+}
+
+static int
+knc_get_stream_bit_type(struct knc_stream *s)
+{
+
+	if (!s || !s->cur)
+		return 0;
+
+	return s->cur->type;
+}
+
+static void *
+knc_get_stream_command(struct knc_stream *s, size_t *len)
+{
+	void	*ret;
+
+	if (!s || !s->cur)
+		return NULL;
+
+	*len = s->cur->len;
+	 ret = s->cur->buf;
+
+	s->cur = s->cur->next;
+
+	s->avail -= *len;
+
+	return ret;
+}
+
+static size_t
 knc_get_istream(struct knc_stream *s, void **buf, size_t len)
 {
 	struct knc_stream_bit	*tmp;
@@ -426,7 +485,7 @@ knc_get_istream(struct knc_stream *s, void **buf, size_t len)
 		}
 	}
 
-	tmp = knc_alloc_stream_bit(len);
+	tmp = knc_alloc_stream_bit(STREAM_BUFFER, len);
 	if (!tmp)
 		return 0;
 
@@ -455,6 +514,12 @@ knc_get_ostream(struct knc_stream *s, void **buf, size_t len)
 
 	/* XXXrcd: hmmm, what if bufpos moves us beyond the stream? */
 
+	/*
+	 * XXXrcd: error if the stream bit is a command?  Shouldn't happen,
+	 *         though because the user is not exposed to such streams
+	 *         and the internal code doesn't use this func.
+	 */
+
 	if (s->cur->len >= s->bufpos) {
 		*buf = (char *)s->cur->buf + s->bufpos;
 		return MIN(len, s->cur->len - s->bufpos);
@@ -475,6 +540,12 @@ knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 	if (!s || !s->cur)
 		/* Nothing here */
 		return 0;
+
+	/*
+	 * XXXrcd: error if the stream bit is a command?  Shouldn't happen,
+	 *         though because the user is not exposed to such streams
+	 *         and the internal code doesn't use this func.
+	 */
 
 	/* First we count the bits. */
 
@@ -567,6 +638,9 @@ knc_get_ostream_contig(struct knc_stream *s, void **buf, size_t len)
 
 		cur = cur->next;
 		retlen += tmplen;
+
+		if (!cur || cur->type != STREAM_BUFFER)
+			break;
 	}
 
 	return retlen;
@@ -735,16 +809,35 @@ read_packet(struct knc_stream *s, void **buf)
 }
 
 static size_t
-put_packet(struct knc_stream *s, gss_buffer_t buf)
+put_packet(knc_ctx ctx, gss_buffer_t buf)
 {
 	uint32_t	netlen;
 
 	netlen = htonl((uint32_t)buf->length);
-	knc_put_stream(s, &netlen, 4);
-	knc_put_stream_gssbuf(s, buf);
+	knc_put_stream(&ctx->cooked_send, &netlen, 4);
+	knc_put_stream_gssbuf(&ctx->cooked_send, buf);
 
 	/* XXXrcd: useful to return this?  What about errors? */
 	return 0;
+}
+
+static size_t
+wrap_and_put_packet(knc_ctx ctx, char *buf, size_t len)
+{
+	gss_buffer_desc	 in;
+	gss_buffer_desc	 out;
+	OM_uint32	 maj;
+	OM_uint32	 min;
+	int		 privacy = (ctx->opts & KNC_OPT_NOPRIVACY)?0:1;
+
+	in.length = len;
+	in.value  = buf;
+	maj = gss_wrap(&min, ctx->gssctx, privacy, GSS_C_QOP_DEFAULT,
+	    &in, NULL, &out);
+
+	KNC_GSS_ERROR(ctx, maj, min, 0, "gss_wrap");
+
+	return put_packet(ctx, &out);
 }
 
 knc_ctx
@@ -787,7 +880,7 @@ knc_set_debug(knc_ctx ctx, int setting)
 }
 
 void
-knc_ctx_close(knc_ctx ctx)
+knc_ctx_destroy(knc_ctx ctx)
 {
 	OM_uint32	min;
 
@@ -809,10 +902,10 @@ knc_ctx_close(knc_ctx ctx)
 
 	/* The caller owns the channel bindings */
 
-	if (ctx->net_is_open && ctx->netclose)
+	if (ctx->netclose)
 		(ctx->netclose)(ctx->netcookie);
 
-	if (ctx->local_is_open && ctx->localclose)
+	if (ctx->localclose)
 		(ctx->localclose)(ctx->localcookie);
 
 	/* XXXrcd: memory leaks?  */
@@ -826,6 +919,20 @@ knc_ctx_close(knc_ctx ctx)
 	knc_destroy_stream(&ctx->cooked_send);
 
 	free(ctx);
+}
+
+/*
+ * Although we renamed this to knc_ctx_destroy(), we leave this
+ * for compatibility for the time being...  We do, however, ensure
+ * that knc_ctx_close() has no documentation thus reducing its
+ * chance of use.
+ */
+
+void
+knc_ctx_close(knc_ctx ctx)
+{
+
+	knc_ctx_destroy(ctx);
 }
 
 int
@@ -1188,7 +1295,7 @@ knc_state_init(knc_ctx ctx, void *buf, size_t len)
 	    &ctx->time_rec);
 
 	if (out.length > 0)
-		put_packet(&ctx->cooked_send, &out);
+		put_packet(ctx, &out);
 		/* XXXrcd: errors? */
 
 	KNC_GSS_ERROR(ctx, maj, min, -1, "gss_init_sec_context");
@@ -1223,7 +1330,7 @@ knc_state_accept(knc_ctx ctx, void *buf, size_t len)
 	    &ctx->ret_flags, &ctx->time_rec, &ctx->deleg_cred);
 
 	if (out.length)
-		put_packet(&ctx->cooked_send, &out);
+		put_packet(ctx, &out);
 		/* XXXrcd: ERRORS?!? */
 
 	KNC_GSS_ERROR(ctx, maj, min, -1, "gss_accept_sec_context");
@@ -1262,6 +1369,16 @@ knc_state_session(knc_ctx ctx, void *buf, size_t len)
 		return 0;
 	}
 
+	/*
+	 * Here, we know that we have data, so we need to decide if we
+	 * are in a position to accept it.
+	 */
+
+	if (!(ctx->open & OPEN_READ)) {
+		knc_generic_error(ctx, "Data after EOF");
+		return -1;
+	}
+
 	knc_put_stream_gssbuf(&ctx->cooked_recv, &out);
 
 	return 0;
@@ -1283,15 +1400,47 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 	KNCDEBUG(ctx, ("knc_state_command: enter\n"));
 	maj = gss_unwrap(&min, ctx->gssctx, &in, &out, NULL, NULL);
 
-	/* XXXrcd: better error handling... */
 	if (maj != GSS_S_COMPLETE) {
 		knc_gss_error(ctx, maj, min, "gss_unwrap");
 		return -1;
 	}
 
+	/*
+	 * We set the state back to STATE_SESSION as no matter what happens
+	 * after this, we'll either have processed the command or raised an
+	 * error.
+	 */
+
+	ctx->state = STATE_SESSION;
+
+	/*
+	 * Our EOFs are special short commands which we identify via their
+	 * length.  A command of zero length is EOF in both directions.  A
+	 * command with a length of one is a read EOF if the byte is 0 and
+	 * a write EOF if the byte is 1.
+	 */
+
 	if (out.length == 0) {
-		/* Close the stream for reading... */
+		/* XXXrcd: should check if we've sent EOF not if we're open */
+		if (ctx->open & OPEN_WRITE)
+			knc_put_eof(ctx, KNC_DIR_SEND);
+		if (ctx->open & OPEN_READ)
+			knc_put_eof(ctx, KNC_DIR_RECV);
 		ctx->open &= ~(OPEN_READ|OPEN_WRITE);
+		return 0;
+	}
+
+	if (out.length == 1 && *(char *)out.value == 0) {
+		ctx->open &= ~OPEN_READ;
+		return 0;
+	}
+
+	if (out.length == 1 && *(char *)out.value == 1) {
+		/* XXXrcd: should check if we've sent EOF not if we're open */
+		if (ctx->open & OPEN_WRITE)
+			knc_put_eof(ctx, KNC_DIR_SEND);
+		ctx->open &= ~OPEN_WRITE;
+		return 0;
 	}
 
 	/*
@@ -1304,7 +1453,6 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 	 *         commands in advance of the first release...
 	 */
 
-	ctx->state = STATE_SESSION;
 	return 0;
 }
 
@@ -1354,6 +1502,8 @@ knc_state_process_in(knc_ctx ctx)
 
 		/* XXXrcd: errors and the like? */
 
+		/* XXXrcd: EOF handling likely wants to go here. */
+
 	}
 
 	/*NOTREACHED*/
@@ -1363,13 +1513,8 @@ knc_state_process_in(knc_ctx ctx)
 static int
 knc_state_process_out(knc_ctx ctx)
 {
-	gss_buffer_desc	 in;
-	gss_buffer_desc	 out;
-	OM_uint32	 maj;
-	OM_uint32	 min;
 	size_t		 len;
 	void		*buf;
-	int		 privacy = (ctx->opts & KNC_OPT_NOPRIVACY)?0:1;
 
 	KNCDEBUG(ctx, ("knc_state_process_out: enter\n"));
 
@@ -1379,34 +1524,45 @@ knc_state_process_out(knc_ctx ctx)
 	 * to ctx->cooked_send.
 	 */
 
-	/* XXXrcd: how about STATE_COMMAND? */
-	if (ctx->state != STATE_SESSION)
+	if (ctx->state != STATE_SESSION && ctx->state != STATE_COMMAND)
 		return 0;
 
 	while (knc_stream_avail(&ctx->cooked_send) < ctx->sendmax) {
+		switch (knc_get_stream_bit_type(&ctx->raw_send)) {
+		case STREAM_COMMAND:
+			buf = knc_get_stream_command(&ctx->raw_send, &len);
+			wrap_and_put_packet(ctx, buf, 0);
+			wrap_and_put_packet(ctx, buf, len);
+			break;
 
-		/*
-		 * We clip the length at ctx->gssmaxpacket to make
-		 * the job of the receiver easier.
-		 */
+		case STREAM_BUFFER:
+			/*
+			 * We clip the length at ctx->gssmaxpacket to make
+			 * the job of the receiver easier.
+			 */
 
-		len = knc_get_ostream_contig(&ctx->raw_send, &buf,
-		    ctx->gssmaxpacket);
+			len = knc_get_ostream_contig(&ctx->raw_send, &buf,
+			    ctx->gssmaxpacket);
 
-		if (len < 1) {
-			/* XXXrcd: ERRORS? Maybe there aren't any...? */
+			if (len < 1) {
+				/* XXXrcd: ERRORS? Maybe there aren't any...? */
+				/*
+				 * XXXrcd: analyse this one a bit more,
+				 * what if we didn't get a byte because there
+				 * is a command pending?  Shouldn't happen,
+				 * but let's convince ourselves properly at
+				 * a later time...
+				 */
+				return 0;
+			}
+
+			wrap_and_put_packet(ctx, buf, len);
+			knc_stream_drain(&ctx->raw_send, len);
+			break;
+		default:
 			return 0;
 		}
 
-		in.length = len;
-		in.value  = buf;
-		maj = gss_wrap(&min, ctx->gssctx, privacy, GSS_C_QOP_DEFAULT,
-		    &in, NULL, &out);
-
-		KNC_GSS_ERROR(ctx, maj, min, -1, "gss_wrap");
-
-		put_packet(&ctx->cooked_send, &out);
-		knc_stream_drain(&ctx->raw_send, len);
 	}
 
 	KNCDEBUG(ctx, ("knc_state_process_out: leave\n"));
@@ -1508,6 +1664,22 @@ knc_get_obufv(knc_ctx ctx, int dir, struct iovec **vec, int *count)
 		return 0;
 
 	return knc_get_ostreamv(knc_find_buf(ctx,KNC_SIDE_OUT,dir), vec, count);
+}
+
+int
+knc_put_eof(knc_ctx ctx, int dir)
+{
+	char	buf[1];
+
+	if (dir == KNC_DIR_SEND) {
+		buf[0] = 0;
+		ctx->open &= ~OPEN_WRITE;
+	} else {
+		buf[0] = 1;
+	}
+
+	knc_put_stream_command(&ctx->raw_send, buf, 1);
+	return 0;
 }
 
 size_t
@@ -1736,7 +1908,6 @@ knc_set_net_fds(knc_ctx ctx, int rfd, int wfd)
 	cookie->wfd  = wfd;
 
 	ctx->net_uses_fd = 1;
-	ctx->net_is_open = 1;
 
 	ctx->netcookie = cookie;
 	ctx->netread   = fdread;
@@ -1745,10 +1916,25 @@ knc_set_net_fds(knc_ctx ctx, int rfd, int wfd)
 }
 
 void
+knc_give_net_fds(knc_ctx ctx, int rfd, int wfd)
+{
+
+	knc_set_net_fds(ctx, rfd, wfd);
+	((struct fd_cookie *)ctx->netcookie)->mine = 1;;
+}
+
+void
 knc_set_net_fd(knc_ctx ctx, int fd)
 {
 
 	knc_set_net_fds(ctx, fd, fd);
+}
+
+void
+knc_give_net_fd(knc_ctx ctx, int fd)
+{
+
+	knc_give_net_fds(ctx, fd, fd);
 }
 
 int
@@ -1769,13 +1955,6 @@ knc_get_net_wfd(knc_ctx ctx)
 		return ((struct fd_cookie *)ctx->netcookie)->wfd;
 
 	return -1;
-}
-
-int
-knc_net_is_open(knc_ctx ctx)
-{
-
-	return ctx && ctx->net_uses_fd && ctx->net_is_open;
 }
 
 void
@@ -1799,7 +1978,6 @@ knc_set_local_fds(knc_ctx ctx, int rfd, int wfd)
 	cookie->wfd  = wfd;
 
 	ctx->local_uses_fd = 1;
-	ctx->local_is_open = 1;
 
 	ctx->localcookie = cookie;
 	ctx->localread   = fdread;
@@ -1808,10 +1986,25 @@ knc_set_local_fds(knc_ctx ctx, int rfd, int wfd)
 }
 
 void
+knc_give_local_fds(knc_ctx ctx, int rfd, int wfd)
+{
+
+	knc_set_local_fds(ctx, rfd, wfd);
+	((struct fd_cookie *)ctx->localcookie)->mine = 1;
+}
+
+void
 knc_set_local_fd(knc_ctx ctx, int fd)
 {
 
 	knc_set_local_fds(ctx, fd, fd);
+}
+
+void
+knc_give_local_fd(knc_ctx ctx, int fd)
+{
+
+	knc_give_local_fds(ctx, fd, fd);
 }
 
 int
@@ -1832,13 +2025,6 @@ knc_get_local_wfd(knc_ctx ctx)
 		return ((struct fd_cookie *)ctx->localcookie)->wfd;
 
 	return -1;
-}
-
-int
-knc_local_is_open(knc_ctx ctx)
-{
-
-	return ctx && ctx->local_uses_fd && ctx->local_is_open;
 }
 
 int
@@ -1886,43 +2072,41 @@ knc_get_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs,
 	if (!ctx)
 		return 0;
 
-	if (ctx->net_uses_fd && ctx->net_is_open) {
-		if (knc_need_input(ctx, KNC_DIR_RECV)) {
-			cbs[i]		= _fill_recv;
-			fds[i].fd	= knc_get_net_rfd(ctx);
-			fds[i++].events	= POLLIN;
-			if (i >= nfds)
-				return (nfds_t)-1;
-		}
-
-		if (knc_can_output(ctx, KNC_DIR_SEND)) {
-			cbs[i]		= _flush_send;
-			fds[i].fd	= knc_get_net_wfd(ctx);
-			fds[i++].events = POLLOUT;
-			if (i >= nfds)
-				return (nfds_t)-1;
-		}
+	if (knc_get_net_rfd(ctx) && knc_need_input(ctx, KNC_DIR_RECV)) {
+		cbs[i]		= _fill_recv;
+		fds[i].fd	= knc_get_net_rfd(ctx);
+		fds[i++].events	= POLLIN;
+		if (i >= nfds)
+			return (nfds_t)-1;
 	}
 
-	if (ctx->local_uses_fd && ctx->local_is_open) {
+	if (knc_get_net_wfd(ctx) != -1 && knc_can_output(ctx, KNC_DIR_SEND)) {
+		cbs[i]		= _flush_send;
+		fds[i].fd	= knc_get_net_wfd(ctx);
+		fds[i++].events = POLLOUT;
+		if (i >= nfds)
+			return (nfds_t)-1;
+	}
+
+	if (knc_get_local_rfd(ctx) != -1 &&
+	    knc_need_input(ctx, KNC_DIR_SEND)) {
 		/*
 		 * Here, we are reading unframed bytes and so we size our
 		 * buffer as the slightly more accurate raw+cooked size for
 		 * comparison.
 		 */
-		if (knc_need_input(ctx, KNC_DIR_SEND)) {
-			cbs[i]		= _fill_send;
-			fds[i].fd	 = knc_get_local_rfd(ctx);
-			fds[i++].events	 = POLLIN;
-			if (i >= nfds)
-				return (nfds_t)-1;
-		}
+		cbs[i]		= _fill_send;
+		fds[i].fd	 = knc_get_local_rfd(ctx);
+		fds[i++].events	 = POLLIN;
+		if (i >= nfds)
+			return (nfds_t)-1;
+	}
 
-		if (knc_can_output(ctx, KNC_DIR_RECV) > 0) {
-			cbs[i]		= _flush_recv;
-			fds[i].fd	 = knc_get_local_wfd(ctx);
-			fds[i++].events	 = POLLOUT;
-		}
+	if (knc_get_local_wfd(ctx) != -1 &&
+	    knc_can_output(ctx, KNC_DIR_RECV)) {
+		cbs[i]		= _flush_recv;
+		fds[i].fd	 = knc_get_local_wfd(ctx);
+		fds[i++].events	 = POLLOUT;
 	}
 
 	return i;
@@ -2016,7 +2200,7 @@ out:
 }
 
 static int
-errno_switch(knc_ctx ctx, int e, int *is_open, const char *errstr)
+errno_switch(knc_ctx ctx, int e, const char *errstr)
 {
 
 	switch (e) {
@@ -2028,8 +2212,6 @@ errno_switch(knc_ctx ctx, int e, int *is_open, const char *errstr)
 		break;
 
 	default:
-		/* XXXrcd: hmmm! more than this, I think. */
-		*is_open = 0;
 		knc_syscall_error(ctx, errstr, e);
 	}
 
@@ -2044,7 +2226,6 @@ knc_fill(knc_ctx ctx, int dir)
 	void	 *tmpbuf;
 	ssize_t	(*ourread)(void *, void *, size_t);
 	void	 *ourcookie;
-	int	 *is_open;
 	ssize_t	  ret;
 
 	if (!ctx || ctx->error)
@@ -2053,11 +2234,9 @@ knc_fill(knc_ctx ctx, int dir)
 	if (dir == KNC_DIR_SEND) {
 		ourread   =  ctx->localread;
 		ourcookie =  ctx->localcookie;
-		is_open   = &ctx->local_is_open;
 	} else {
 		ourread   = ctx->netread;
 		ourcookie = ctx->netcookie;
-		is_open   = &ctx->net_is_open;
 	}
 
 	/* XXXrcd: deal properly with EOF */
@@ -2080,7 +2259,7 @@ knc_fill(knc_ctx ctx, int dir)
 
 	if (ret == -1) {
 		KNCDEBUG(ctx, ("read error: %s\n", strerror(errno)));
-		return errno_switch(ctx, errno, is_open, "reading");
+		return errno_switch(ctx, errno, "reading");
 	}
 
 	if (ret == 0) {
@@ -2090,10 +2269,13 @@ knc_fill(knc_ctx ctx, int dir)
 		 *         we are supposed to see an appropriate command
 		 *         packet for close.
 		 */
-		*is_open = 0;
-		knc_generic_error(ctx, "Short input");
-		knc_garbage_collect(ctx);
-		return EIO;
+		if (ctx->open & OPEN_READ) {
+			knc_generic_error(ctx, "Short input");
+			knc_garbage_collect(ctx);
+			return EIO;
+		}
+
+		return 0;
 	}
 
 	if (ret > 0) {
@@ -2118,7 +2300,6 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 	ssize_t		 len;
 	ssize_t		(*ourwritev)(void *, const struct iovec *, int);
 	void		 *ourcookie;
-	int		 *is_open;
 
 	if (!ctx || ctx->error)
 		return EIO;
@@ -2126,12 +2307,12 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 	if (dir == KNC_DIR_SEND) {
 		ourwritev =  ctx->netwritev;
 		ourcookie =  ctx->netcookie;
-		is_open   = &ctx->net_is_open;
 	} else {
 		ourwritev =  ctx->localwritev;
 		ourcookie =  ctx->localcookie;
-		is_open   = &ctx->local_is_open;
 	}
+
+	/* XXXrcd: deal with ctx->open */
 
 	for (;;) {
 		if (dir == KNC_DIR_SEND)
@@ -2146,7 +2327,7 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 
 		if (len == -1) {
 			KNCDEBUG(ctx, ("write error: %s\n", strerror(errno)));
-			return errno_switch(ctx, errno, is_open, "writev");
+			return errno_switch(ctx, errno, "writev");
 		}
 
 		KNCDEBUG(ctx, ("knc_flush: wrote %zd bytes.\n", len));
@@ -2162,26 +2343,34 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 	return 0;
 }
 
-void
-knc_authenticate(knc_ctx ctx)
+static void
+run_loop(knc_ctx ctx)
 {
 	knc_callback	cbs[4];
 	struct pollfd	fds[4];
 	nfds_t		nfds;
 	int		ret;
 
+	nfds = knc_get_pollfds(ctx, fds, cbs, 4);
+	ret = poll(fds, nfds, -1);
+	if (ret == -1) {
+		if (errno != EINTR)
+			knc_syscall_error(ctx, "poll", errno);
+		return;
+	}
+	knc_service_pollfds(ctx, fds, cbs, nfds);
+	knc_garbage_collect(ctx);
+}
+
+void
+knc_authenticate(knc_ctx ctx)
+{
+
 	if (!ctx)
 		return;
 
 	while (!knc_is_authenticated(ctx) && !knc_error(ctx)) {
-		nfds = knc_get_pollfds(ctx, fds, cbs, 4);
-		ret = poll(fds, nfds, -1);
-		if (ret == -1) {
-			knc_syscall_error(ctx, "poll", errno);
-			break;
-		}
-		knc_service_pollfds(ctx, fds, cbs, nfds);
-		knc_garbage_collect(ctx);
+		run_loop(ctx);
 	}
 }
 
@@ -2236,6 +2425,15 @@ internal_read(knc_ctx ctx, void *buf, size_t len, int full)
 		return total;
 
 	/*
+	 * If the socket is closed (or half closed in the direction
+	 * we need), then we return 0 indicating EOF.
+	 */
+
+	/* XXXrcd: bad check for OPEN_READ, not the right place? */
+	if (total == 0 && (ctx->open & OPEN_READ) == 0)
+		return 0;
+
+	/*
 	 * If the socket is non-blocking: flush output before reading.
 	 * The goal here is to make standard request response protocols
 	 * used in blocking mode more likely to work.  We only perform
@@ -2275,9 +2473,10 @@ internal_read(knc_ctx ctx, void *buf, size_t len, int full)
 			return -1;
 		}
 
-		if (!ctx->net_is_open)
+		/* XXXrcd: bad place to check for EOF, I think. */
+		if ((ctx->open & OPEN_READ) == 0)
 			/* XXXrcd: double check this idea... */
-			return 0;
+			break;
 
 		ret = reads_get_buf(ctx, (char *)buf + total, len - total);
 		total += ret;
@@ -2317,7 +2516,7 @@ knc_write(knc_ctx ctx, const void *buf, size_t len)
 		return -1;
 	}
 
-	if (!ctx->net_is_open) {
+	if ((ctx->open & OPEN_WRITE) == 0) {
 		errno = EPIPE;
 		return -1;
 	}
@@ -2331,6 +2530,93 @@ knc_write(knc_ctx ctx, const void *buf, size_t len)
 	return ret;
 }
 
+int
+knc_shutdown(knc_ctx ctx, int how)
+{
+
+	if (!ctx) {
+		errno = EBADF;
+		return -1;
+	}
+
+	if (ctx->error) {
+		errno = EIO;
+		return -1;
+	}
+
+	switch (how) {
+	case SHUT_RD:
+		if (ctx->open & OPEN_READ)
+			knc_put_eof(ctx, KNC_DIR_RECV);
+		break;
+	case SHUT_WR:
+		if (ctx->open & OPEN_WRITE)
+			knc_put_eof(ctx, KNC_DIR_SEND);
+		break;
+	case SHUT_RDWR:
+		if (ctx->open & OPEN_READ)
+			knc_put_eof(ctx, KNC_DIR_RECV);
+		if (ctx->open & OPEN_WRITE)
+			knc_put_eof(ctx, KNC_DIR_SEND);
+		break;
+	default:
+		errno = EINVAL;
+		return -1;
+	}
+
+	/* XXXrcd: should we flush?  Hmmm, maybe not? */
+	knc_flush(ctx, KNC_DIR_SEND, -1);
+
+	/*
+	 * XXXrcd: think through a little more... getting off train in
+	 *         a few minutes...
+	 */
+
+	return 0;
+}
+
+int
+knc_close(knc_ctx ctx)
+{
+	int	ret;
+
+	ret = knc_shutdown(ctx, SHUT_RDWR);
+	if (ret)
+		return ret;
+
+	while (!knc_eof(ctx) && !knc_error(ctx))
+		run_loop(ctx);
+
+	return 0;
+}
+
+int
+knc_eof(knc_ctx ctx)
+{
+
+	if (ctx && (ctx->open & OPEN_READ))
+		return 0;
+	return 1;
+}
+
+int
+knc_io_complete(knc_ctx ctx)
+{
+
+	if (!ctx)
+		return 1;
+
+	if (ctx->open)
+		return 0;
+
+	if (knc_pending(ctx, KNC_DIR_SEND))
+		return 0;
+
+	if (knc_pending(ctx, KNC_DIR_RECV))
+		return 0;
+
+	return 1;
+}
 
 /* XXXrcd: review this code against gssstdio.c! */
 

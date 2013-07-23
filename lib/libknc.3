@@ -37,7 +37,7 @@
 .Fa "char *defport" "int opts"
 .Fc
 .Ft void
-.Fn knc_ctx_close "knc_ctx ctx"
+.Fn knc_ctx_destroy "knc_ctx ctx"
 .Ss Examining and Altering Contexts
 .Ft int
 .Fn knc_is_authenticated "knc_ctx ctx"
@@ -82,7 +82,11 @@
 .Ft void
 .Fn knc_set_net_fds "knc_ctx ctx" "int rfd" "int wfd"
 .Ft void
+.Fn knc_give_net_fds "knc_ctx ctx" "int rfd" "int wfd"
+.Ft void
 .Fn knc_set_net_fd "knc_ctx ctx" "int fd"
+.Ft void
+.Fn knc_give_net_fd "knc_ctx ctx" "int fd"
 .Ft int
 .Fn knc_get_local_rfd "knc_ctx ctx"
 .Ft int
@@ -90,7 +94,11 @@
 .Ft void
 .Fn knc_set_local_fds "knc_ctx ctx" "int rfd" "int wfd"
 .Ft void
+.Fn knc_give_local_fds "knc_ctx ctx" "int rfd" "int wfd"
+.Ft void
 .Fn knc_set_local_fd "knc_ctx ctx" "int fd"
+.Ft void
+.Fn knc_give_local_fd "knc_ctx ctx" "int fd"
 .Ss Starting the Connexion
 .Ft void
 .Fn knc_initiate "knc_ctx ctx"
@@ -103,6 +111,10 @@
 .Fn knc_read "knc_ctx ctx" "void *buf" "size_t len"
 .Ft ssize_t
 .Fn knc_write "knc_ctx ctx" "const void *buf" "size_t len"
+.Ft int
+.Fn knc_close "knc_ctx ctx"
+.Ft int
+.Fn knc_shutdown "knc_ctx ctx" "int how"
 .Ss The More Complex Buffer Based Interface
 .Ft int
 .Fn knc_put_buf "struct knc_ctx *ctx" "int dir" "const void *" "int len"
@@ -115,6 +127,8 @@
 .Fo knc_put_mmapbuf
 .Fa "knc_ctx ctx" "int dir" "size_t len" "int flags" "int fd" "off_t offset"
 .Fc
+.Ft int
+.Fn knc_put_eof "knc_ctx ctx" "int dir"
 .Ft int
 .Fn knc_get_ibuf "knc_ctx ctx" "int dir" "void **buf" "size_t len"
 .Ft int
@@ -129,6 +143,10 @@
 .Fn knc_fill "knc_ctx ctx" "int dir"
 .Ft int
 .Fn knc_flush "knc_ctx ctx" "int dir" "size_t len"
+.Ft int
+.Fn knc_eof "knc_ctx ctx"
+.Ft int
+.Fn knc_io_complete "knc_ctx ctx"
 .Ft size_t
 .Fn knc_pending "knc_ctx ctx" "int dir"
 .Ft int
@@ -298,9 +316,23 @@ network side to internally defined functions that use
 and
 .Xr writev .
 The file descriptor will not be closed when the context is destroyed.
+
+.It Fn knc_give_net_fds ctx rfd wfd
+calls
+.Fn knc_set_net_fds
+and marks the file descriptors to be closed when the
+.Ar knc_ctx
+is destroyed.
+
 .It Fn knc_set_net_fd ctx fd
 calls
 .Fn knc_set_net_fds ctx fd fd .
+.It Fn knc_give_net_fd ctx fd
+calls
+.Fn knc_set_net_fd
+and marks the file descriptors to be closed when the
+.Ar knc_ctx
+is destroyed.
 .It Fn knc_set_local_fds ctx rfd wfd
 sets the read and write file descriptors associated with the
 local side of the context.
@@ -310,9 +342,21 @@ local side to internally defined functions that use
 and
 .Xr writev .
 The file descriptor will not be closed when the context is destroyed.
+.It Fn knc_give_local_fds ctx rfd wfd
+calls
+.Fn knc_set_local_fds
+and marks the file descriptors to be closed when the
+.Ar knc_ctx
+is destroyed.
 .It Fn knc_set_local_fd ctx fd
 calls
 .Fn knc_set_local_fds ctx fd fd .
+.It Fn knc_give_local_fd ctx rfd
+calls
+.Fn knc_set_local_fd
+and marks the file descriptors to be closed when the
+.Ar knc_ctx
+is destroyed.
 .El
 .Pp
 When the necessary settings have been made, a call to either
@@ -412,7 +456,14 @@ and as such it will return the number of bytes written, zero for EOF and
 is always a blocking interface and so it will continue to try to send
 the data until the entire sending buffer has been sent.
 .It Fn knc_close ctx
-will close the connexion.
+will close the connexion which involves a little bit of I/O as the
+other end must be securely notified that you are finished.
+.It Fn knc_shutdown ctx how
+causes all or part of the full-duplex connexion to be shut down.
+The
+.Ar how
+argument is evaluated in the same way as
+.Xr shutdown 2 .
 .El
 .Pp
 For more complex usage, a slightly more complex interface is provided.
@@ -456,6 +507,9 @@ put the resultant buffer onto the input side of the desired stream,
 and
 .Xr munmap 2
 it when it has been consumed.
+.It knc_put_eof ctx dir
+puts an EOF packet on the queue to be sent in the direction
+.Ar dir .
 .It Fn knc_get_ibuf ctx dir buf len
 will allocate and provide a pointer to a buffer in the input side of
 the specified stream, ensuring that the buffer is of at least the
@@ -515,6 +569,16 @@ file descriptor.
 Regardless of the length, the call will return when the output buffer
 is empty and so a length of (size_t) -1 will cause the entire buffer
 to be written.
+.It Fn knc_eof ctx
+returns true if EOF has been received on the
+.Ar KNC_DIR_RECV
+side.
+Another way to say this, is returns true if
+.Fn knc_read
+would return zero.
+.It Fn knc_io_compete ctx
+returns true if there is no further IO necessary or possible on the
+connexion.
 .It Fn knc_pending ctx dir
 returns the approximate amount of data in the specified stream.
 More precisely, the returned length will be the sum of the ciphertext

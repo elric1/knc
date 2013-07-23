@@ -59,10 +59,16 @@ main(int argc, char **argv)
 		struct pollfd	fds[4];
 		nfds_t		nfds;
 
-		if (knc_error(ctx))
+		/*
+		 * XXXrcd: knc_eof() should really be something like
+		 *         ``knc_io_complete()'' because EOF is done via
+		 *         packets and whatnot...
+		 */
+
+		if (knc_eof(ctx) && knc_error(ctx))
 			break;
 
-		if (!knc_net_is_open(ctx) || !knc_local_is_open(ctx))
+		if (knc_eof(ctx))
 			break;
 
 		nfds = knc_get_pollfds(ctx, fds, cbs, 4);
@@ -74,8 +80,6 @@ main(int argc, char **argv)
 		}
 
 		knc_service_pollfds(ctx, fds, cbs, nfds);
-
-		knc_garbage_collect(ctx);
 	}
 
 	ret = 0;

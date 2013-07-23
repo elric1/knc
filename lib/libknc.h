@@ -24,6 +24,7 @@
  */
 
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/uio.h>
 
 #include <poll.h>
@@ -46,7 +47,8 @@ typedef enum { KNC_DIR_SEND, KNC_DIR_RECV } knc_dir;
  */
 
 knc_ctx		knc_ctx_init(void);
-void		knc_ctx_close(knc_ctx);
+void		knc_ctx_destroy(knc_ctx);
+void		knc_ctx_close(knc_ctx);		/* deprecated */
 
 /* Altering and querying the context */
 
@@ -85,10 +87,14 @@ gss_cred_id_t	knc_get_deleg_cred(knc_ctx);
 void	 	knc_free_deleg_cred(knc_ctx);
 void		knc_set_local_fds(knc_ctx, int, int);
 void		knc_set_local_fd(knc_ctx, int);
+void		knc_give_local_fds(knc_ctx, int, int);
+void		knc_give_local_fd(knc_ctx, int);
 int		knc_get_local_rfd(knc_ctx);
 int		knc_get_local_wfd(knc_ctx);
 void		knc_set_net_fds(knc_ctx, int, int);
 void		knc_set_net_fd(knc_ctx, int);
+void		knc_give_net_fds(knc_ctx, int, int);
+void		knc_give_net_fd(knc_ctx, int);
 int		knc_get_net_rfd(knc_ctx);
 int		knc_get_net_wfd(knc_ctx);
 nfds_t		knc_get_pollfds(knc_ctx, struct pollfd *, knc_callback *,
@@ -120,6 +126,10 @@ void		knc_authenticate(knc_ctx);
 ssize_t		knc_read(knc_ctx, void *, size_t);
 ssize_t		knc_fullread(knc_ctx, void *, size_t);
 ssize_t		knc_write(knc_ctx, const void *, size_t);
+int		knc_shutdown(knc_ctx, int);
+int		knc_close(knc_ctx);
+int		knc_eof(knc_ctx);
+int		knc_io_complete(knc_ctx);
 int		knc_fill(knc_ctx, int);
 int		knc_flush(knc_ctx, int, size_t);
 void		knc_garbage_collect(knc_ctx);
@@ -132,6 +142,7 @@ void		knc_garbage_collect(knc_ctx);
 #define KNC_DIR_RECV	0x1
 #define KNC_DIR_SEND	0x2
 
+int		knc_put_eof(knc_ctx, int);
 size_t		knc_put_buf(knc_ctx, int, const void *,  size_t);
 size_t		knc_put_ubuf(knc_ctx, int, void *, size_t,
 			     void (*)(void *, void *), void *);
