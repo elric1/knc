@@ -55,8 +55,10 @@ serve_file(int nfd, const char *fn)
 
 	if (knc_error(ctx))
 		fprintf(stderr, "KNC ERROR: %s\n", knc_errstr(ctx));
+	else
+		knc_close(ctx);
 
-	knc_ctx_close(ctx);
+	knc_ctx_destroy(ctx);
 	return;
 }
 
