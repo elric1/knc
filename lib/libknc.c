@@ -975,7 +975,9 @@ knc_get_opt(knc_ctx ctx, unsigned opt)
 
 	switch (opt) {
 	case KNC_OPT_NOPRIVACY:
-		return (ctx->opts & KNC_OPT_NOPRIVACY) ? 1 : 0;
+	case KNC_SOCK_NONBLOCK:
+	case KNC_SOCK_CLOEXEC:
+		return (ctx->opts & opt) ? 1 : 0;
 	default:
 		break;
 	}
