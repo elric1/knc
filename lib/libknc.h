@@ -101,8 +101,6 @@ nfds_t		knc_get_pollfds(knc_ctx, struct pollfd *, knc_callback *,
 				nfds_t);
 void		knc_service_pollfds(knc_ctx, struct pollfd *, knc_callback *,
 				    nfds_t);
-int		knc_net_is_open(knc_ctx);
-int		knc_local_is_open(knc_ctx);
 void		knc_set_debug(knc_ctx, int);
 
 /* Error handling */
