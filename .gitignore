@@ -1,8 +1,15 @@
 Makefile
 Makefile.in
+*.a
 *.o
 *.la
+*.ln
 *.lo
+*.pico
+*.po
+*.so
+*.so.?
+*.so.?.?
 .deps/
 .libs/
 
