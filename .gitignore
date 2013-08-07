@@ -25,6 +25,8 @@ Makefile.in
 /configure
 /depcomp
 /install-sh
+/lib/libknc.3.pdf
+/lib/libknc.3.ps
 /libtool
 /ltmain.sh
 /missing

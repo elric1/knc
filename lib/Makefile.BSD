@@ -1,0 +1,16 @@
+
+.include <bsd.own.mk>
+
+LIB=knc
+
+SRCS=libknc.c simple.c
+
+CFLAGS+=-I..
+LINTFLAGS+=-I..
+LDFLAGS+= -lgssapi
+
+WARNS=4
+
+MKPROF=yes
+
+.include <bsd.lib.mk>
