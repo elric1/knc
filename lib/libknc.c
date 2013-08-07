@@ -52,6 +52,7 @@
 #endif
 
 #include "libknc.h"
+#include "private.h"
 
 struct knc_stream_bit {
 	int			  type;
@@ -190,11 +191,6 @@ int debug = 0;
 
 static void	debug_printf(const char *, ...)
     __attribute__((__format__(__printf__, 1, 2)));
-
-static void	knc_generic_error(knc_ctx, const char *);
-static void	knc_syscall_error(knc_ctx, const char *, int);
-static void	knc_enomem(knc_ctx);
-static void	knc_gss_error(knc_ctx, OM_uint32, OM_uint32, const char *);
 
 static struct knc_stream_bit	*knc_alloc_stream_bit(int, size_t);
 static size_t			 knc_append_stream_bit(struct knc_stream *,
@@ -978,6 +974,12 @@ knc_get_opt(knc_ctx ctx, unsigned opt)
 	case KNC_SOCK_NONBLOCK:
 	case KNC_SOCK_CLOEXEC:
 		return (ctx->opts & opt) ? 1 : 0;
+
+	case KNC_OPT_SENDINBUFSIZ:
+		return (int)ctx->sendinbufsiz;
+	case KNC_OPT_RECVINBUFSIZ:
+		return (int)ctx->recvinbufsiz;
+
 	default:
 		break;
 	}
@@ -1005,7 +1007,13 @@ knc_set_opt(knc_ctx ctx, unsigned opt, int value)
 			ctx->opts &= ~opt;
 		break;
 
-	/* We haven't defined any non-flag options, yet... */
+	case KNC_OPT_SENDINBUFSIZ:
+		ctx->sendinbufsiz = value;
+		break;
+
+	case KNC_OPT_RECVINBUFSIZ:
+		ctx->recvinbufsiz = value;
+		break;
 
 	default:
 		break;
@@ -2132,6 +2140,25 @@ knc_service_pollfds(knc_ctx ctx, struct pollfd *fds, knc_callback *cbs,
 	}
 }
 
+void
+run_loop(knc_ctx ctx)
+{
+	knc_callback	cbs[4];
+	struct pollfd	fds[4];
+	nfds_t		nfds;
+	int		ret;
+
+	nfds = knc_get_pollfds(ctx, fds, cbs, 4);
+	ret = poll(fds, nfds, -1);
+	if (ret == -1) {
+		if (errno != EINTR)
+			knc_syscall_error(ctx, "poll", errno);
+		return;
+	}
+	knc_service_pollfds(ctx, fds, cbs, nfds);
+	knc_garbage_collect(ctx);
+}
+
 /*
  * The full requirement here is service@host:port.  The defaults are
  * passed in as parameters to knc_connect.
@@ -2345,193 +2372,6 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 	return 0;
 }
 
-static void
-run_loop(knc_ctx ctx)
-{
-	knc_callback	cbs[4];
-	struct pollfd	fds[4];
-	nfds_t		nfds;
-	int		ret;
-
-	nfds = knc_get_pollfds(ctx, fds, cbs, 4);
-	ret = poll(fds, nfds, -1);
-	if (ret == -1) {
-		if (errno != EINTR)
-			knc_syscall_error(ctx, "poll", errno);
-		return;
-	}
-	knc_service_pollfds(ctx, fds, cbs, nfds);
-	knc_garbage_collect(ctx);
-}
-
-void
-knc_authenticate(knc_ctx ctx)
-{
-
-	if (!ctx)
-		return;
-
-	while (!knc_is_authenticated(ctx) && !knc_error(ctx)) {
-		run_loop(ctx);
-	}
-}
-
-static size_t
-reads_get_buf(knc_ctx ctx, void *buf, size_t len)
-{
-	size_t	 ret;
-	size_t	 total;
-	void	*tmp;
-
-	total = 0;
-	for (;;) {
-		ret = knc_get_obuf(ctx, KNC_DIR_RECV, &tmp, len - total);
-
-		if (ret == 0)
-			break;
-
-		memcpy((char *)buf + total, tmp, ret);
-		knc_drain_buf(ctx, KNC_DIR_RECV, ret);
-		total += ret;
-
-		if (total == len)
-			break;
-	}
-
-	return total;
-}
-
-static ssize_t
-internal_read(knc_ctx ctx, void *buf, size_t len, int full)
-{
-	ssize_t	 ret;
-	ssize_t	 total;
-	int	 fillerr;
-
-	KNCDEBUG(ctx, ("knc_read: about to read.\n"));
-
-	if (!ctx) {
-		errno = EBADF;
-		return -1;
-	}
-
-	/*
-	 * We attempt to return data before we initiate a
-	 * read because the read may block and we shouldn't
-	 * block if there is data available to return.
-	 */
-
-	total = reads_get_buf(ctx, buf, len);
-
-	if ((!full && total > 0) || total == (ssize_t)len)
-		return total;
-
-	/*
-	 * If the socket is closed (or half closed in the direction
-	 * we need), then we return 0 indicating EOF.
-	 */
-
-	/* XXXrcd: bad check for OPEN_READ, not the right place? */
-	if (total == 0 && (ctx->open & OPEN_READ) == 0)
-		return 0;
-
-	/*
-	 * If the socket is non-blocking: flush output before reading.
-	 * The goal here is to make standard request response protocols
-	 * used in blocking mode more likely to work.  We only perform
-	 * the flush before we attempt an actual read which is why this
-	 * code is below that which comes above.
-	 */
-	if (!(ctx->opts & KNC_SOCK_NONBLOCK))
-		knc_flush(ctx, KNC_DIR_SEND, -1);
-
-	for (;;) {
-		fillerr = knc_fill(ctx, KNC_DIR_RECV);
-
-		switch (fillerr) {
-		case 0:
-			/* mmm, no error, let's go. */
-			break;
-
-#if EAGAIN != EWOULDBLOCK
-		case EWOULDBLOCK:
-#endif
-		case EAGAIN:
-			if (ctx->opts & KNC_SOCK_NONBLOCK) {
-				errno = fillerr;
-				return -1;
-			}
-			/*
-			 * XXXrcd: really this should be an error if we
-			 *         are in blocking mode as why would we
-			 *         get this unless someone has naughtily
-			 *         lied to us?  At least, if this is going
-			 *         to occur, we should poll(2).
-			 */
-			break;
-
-		default:
-			errno = fillerr;
-			return -1;
-		}
-
-		/* XXXrcd: bad place to check for EOF, I think. */
-		if ((ctx->open & OPEN_READ) == 0)
-			/* XXXrcd: double check this idea... */
-			break;
-
-		ret = reads_get_buf(ctx, (char *)buf + total, len - total);
-		total += ret;
-		if ((!full && total > 0) || total == (ssize_t)len)
-			break;
-	}
-
-	return total;
-}
-
-ssize_t
-knc_read(knc_ctx ctx, void *buf, size_t len)
-{
-
-	return internal_read(ctx, buf, len, 0);
-}
-
-ssize_t
-knc_fullread(knc_ctx ctx, void *buf, size_t len)
-{
-
-	return internal_read(ctx, buf, len, 1);
-}
-
-ssize_t
-knc_write(knc_ctx ctx, const void *buf, size_t len)
-{
-	ssize_t	ret;
-
-	if (!ctx) {
-		errno = EBADF;
-		return -1;
-	}
-
-	if (ctx->error) {
-		errno = EIO;
-		return -1;
-	}
-
-	if ((ctx->open & OPEN_WRITE) == 0) {
-		errno = EPIPE;
-		return -1;
-	}
-
-	ret = knc_put_buf(ctx, KNC_DIR_SEND, buf, len);
-
-	/* XXXrcd: I'm abusing sendinbufsiz here, this isn't good. */
-	if (knc_pending(ctx, KNC_DIR_SEND) > ctx->sendinbufsiz)
-		knc_flush(ctx, KNC_DIR_SEND, 0);
-
-	return ret;
-}
-
 int
 knc_shutdown(knc_ctx ctx, int how)
 {
@@ -2695,7 +2535,7 @@ knc_errstring(OM_uint32 maj_stat, OM_uint32 min_stat, const char *preamble)
 	return str;
 }
 
-static void
+void
 knc_generic_error(knc_ctx ctx, const char *str)
 {
 
@@ -2704,7 +2544,7 @@ knc_generic_error(knc_ctx ctx, const char *str)
 	ctx->errstr = strdup(str);
 }
 
-static void
+void
 knc_syscall_error(knc_ctx ctx, const char *str, int number)
 {
 	char	*errstr;
@@ -2722,7 +2562,7 @@ knc_syscall_error(knc_ctx ctx, const char *str, int number)
 	ctx->errstr = tmp;
 }
 
-static void
+void
 knc_gss_error(knc_ctx ctx, OM_uint32 maj_stat, OM_uint32 min_stat,
 	      const char *s)
 {
@@ -2734,7 +2574,7 @@ knc_gss_error(knc_ctx ctx, OM_uint32 maj_stat, OM_uint32 min_stat,
 	KNCDEBUG(ctx, ("knc_gss_error: %s\n", ctx->errstr));
 }
 
-static void
+void
 knc_enomem(knc_ctx ctx)
 {
 

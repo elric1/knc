@@ -2,7 +2,7 @@
 
 lib_LTLIBRARIES = libknc.la
 
-libknc_la_SOURCES = libknc.c
+libknc_la_SOURCES = libknc.c simple.c
 
 #
 # Let's be a tad more aggressive about warnings:

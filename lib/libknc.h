@@ -69,6 +69,11 @@ void		knc_set_opt(knc_ctx, unsigned, int);
 #define KNC_OPT_NOPRIVACY	0x0004
 #define	KNC_OPT_NOPRIVATE	KNC_OPT_NOPRIVACY
 
+/* The following options are ints rather than boolean */
+
+#define KNC_OPT_SENDINBUFSIZ	0x8001
+#define KNC_OPT_RECVINBUFSIZ	0x8002
+
 int		knc_is_authenticated(knc_ctx);
 void		knc_set_cred(knc_ctx, gss_cred_id_t);
 void		knc_set_service(knc_ctx, gss_name_t);
