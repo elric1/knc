@@ -1,0 +1,5 @@
+usr/include/libknc.h
+usr/lib/libknc.a
+usr/lib/libknc.la
+usr/lib/libknc.so
+usr/share/man/man3/libknc.3

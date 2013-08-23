@@ -10,6 +10,27 @@ Package: knc
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Kerberised NetCat
-     knc provides an 8-bit clean, mutually authenticated tunnel between
-     two endpoints.  The same executable provides both client and server
-     functionality.
+     The KNC protocol provides an 8-bit clean, mutually authenticated
+     Kerberised tunnel between two endpoints.
+     .
+     This package provides an executable which implements the KNC
+     protocol.  The client and server are the same executable.
+
+Package: libknc
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Kerberised Netcat library
+     The KNC protocol provides an 8-bit clean, mutually authenticated
+     Kerberised tunnel between two endpoints.
+     .
+     This package contains a library which implements the KNC protocol.
+
+Package: libknc-dev
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libknc (= ${binary:Version})
+Description: Kerberised NetCat
+     The KNC protocol provides an 8-bit clean, mutually authenticated
+     Kerberised tunnel between two endpoints.
+     .
+     This is the development package, required for building programs
+     using libknc.

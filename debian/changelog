@@ -1,3 +1,11 @@
+knc (1.8-1) unstable; urgency=low
+
+  * Finish up the API for libknc.  We can almost commit to this, now.
+
+  * Split the debian pkgs up into knc, libknc, and libknc-dev.
+
+ -- elric <elric@imrryr.org>  Thu, 14 Feb 2013 12:38:05 +0100
+
 knc (1.7.1-1) unstable; urgency=low
 
   * Fix autoconf issues...
