@@ -33,7 +33,9 @@
 
 #include <err.h>
 #include <errno.h>
+#define	__USE_GNU
 #include <fcntl.h>
+#undef	__USE_GNU
 #include <malloc.h>
 #include <netdb.h>
 #include <stdio.h>
