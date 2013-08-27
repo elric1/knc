@@ -1001,6 +1001,7 @@ knc_set_opt(knc_ctx ctx, unsigned opt, int value)
 	switch (opt) {
 	/* We handle all of the flag-options together: */
 	case KNC_OPT_NOPRIVACY:
+	case KNC_OPT_SENDCMDS:
 	case KNC_SOCK_NONBLOCK:
 	case KNC_SOCK_CLOEXEC:
 		if (value)

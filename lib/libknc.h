@@ -68,6 +68,7 @@ void		knc_set_opt(knc_ctx, unsigned, int);
 #define	KNC_SOCK_CLOEXEC	0x0002
 #define KNC_OPT_NOPRIVACY	0x0004
 #define	KNC_OPT_NOPRIVATE	KNC_OPT_NOPRIVACY
+#define KNC_OPT_SENDCMDS	0x0008
 
 /* The following options are ints rather than boolean */
 
