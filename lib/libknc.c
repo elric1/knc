@@ -334,6 +334,7 @@ knc_put_stream_userbuf(struct knc_stream *s, void *buf, size_t len,
 		/* XXXrcd: hmmm, maybe we should raise an error here? */
 		return 0;
 
+	bit->type	= STREAM_BUFFER;
 	bit->buf	= buf;
 	bit->allocated	= len;
 	bit->len	= len;
