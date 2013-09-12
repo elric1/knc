@@ -150,7 +150,7 @@ int		knc_put_eof(knc_ctx, int);
 size_t		knc_put_buf(knc_ctx, int, const void *,  size_t);
 size_t		knc_put_ubuf(knc_ctx, int, void *, size_t,
 			     void (*)(void *, void *), void *);
-size_t		knc_put_mmapbuf(knc_ctx, int, size_t, int, int, off_t);
+ssize_t		knc_put_mmapbuf(knc_ctx, int, size_t, int, int, off_t);
 size_t		knc_get_ibuf(knc_ctx, int, void **, size_t);
 size_t		knc_get_obuf(knc_ctx, int, void **, size_t);
 size_t		knc_get_obufv(knc_ctx, int dir, struct iovec **, int *);

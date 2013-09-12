@@ -386,27 +386,37 @@ free_mmapbuf(void *buf, void *cookie)
 	free(r);
 }
 
-static size_t
+/*
+ * XXXrcd: this really can't be an exported interface in the future,
+ *         we think as mmap(2) is not implemented with sanity on Linux.
+ *         We will need to come up with a new interface for this.
+ */
+
+static ssize_t
 knc_put_stream_mmapbuf(struct knc_stream *s, size_t len, int flags, int fd,
 		       off_t offset)
 {
 	struct mmapregion	*r;
+	off_t			 add_offset;
 
 	r = calloc(1, sizeof(*r));
 	if (!r)
-		/* XXXrcd: raise an error here? */
-		return 0;
+		return -1;
+
+	add_offset = offset % sysconf(_SC_PAGESIZE);
+	offset -= add_offset;
 
 	r->buf = mmap(NULL, len, PROT_READ, flags, fd, offset);
 	r->len = len;
 
 	/* XXXrcd: better errors would be appreciated... */
 
-	if (!r->buf)
-		/* XXXrcd: raise an error here? */
-		return 0;
+	if (r->buf == MAP_FAILED)
+		/* XXXrcd: leave current errno */
+		return -1;
 
-	return knc_put_stream_userbuf(s, r->buf, r->len, free_mmapbuf, r);
+	return knc_put_stream_userbuf(s, r->buf + add_offset, r->len,
+	    free_mmapbuf, r);
 }
 
 static size_t
@@ -1638,13 +1648,15 @@ knc_put_ubuf(knc_ctx ctx, int dir, void *buf, size_t len,
 	    buf, len, callback, cookie);
 }
 
-size_t
+ssize_t
 knc_put_mmapbuf(knc_ctx ctx, int dir, size_t len, int flags, int fd,
 		off_t offset)
 {
 
-	if (!ctx)
-		return 0;
+	if (!ctx) {
+		errno = ENOMEM;	/* XXXrcd: better error... */
+		return -1;
+	}
 
 	return knc_put_stream_mmapbuf(knc_find_buf(ctx, KNC_SIDE_IN, dir),
 	    len, flags, fd, offset);
