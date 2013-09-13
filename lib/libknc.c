@@ -406,7 +406,7 @@ knc_put_stream_mmapbuf(struct knc_stream *s, size_t len, int flags, int fd,
 	add_offset = offset % sysconf(_SC_PAGESIZE);
 	offset -= add_offset;
 
-	r->buf = mmap(NULL, len, PROT_READ, flags, fd, offset);
+	r->buf = mmap(NULL, len + add_offset, PROT_READ, flags, fd, offset);
 	r->len = len;
 
 	/* XXXrcd: better errors would be appreciated... */
@@ -415,7 +415,7 @@ knc_put_stream_mmapbuf(struct knc_stream *s, size_t len, int flags, int fd,
 		/* XXXrcd: leave current errno */
 		return -1;
 
-	return knc_put_stream_userbuf(s, r->buf + add_offset, r->len,
+	return knc_put_stream_userbuf(s, (char *)r->buf + add_offset, r->len,
 	    free_mmapbuf, r);
 }
 

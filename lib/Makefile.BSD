@@ -5,7 +5,7 @@ LIB=knc
 
 SRCS=libknc.c simple.c
 
-CFLAGS+=-I..
+CFLAGS+=-I.. -g
 LINTFLAGS+=-I..
 LDFLAGS+= -lgssapi
 
