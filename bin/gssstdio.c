@@ -168,9 +168,9 @@ gstd_get_mech(gss_OID mech_oid)
 	char		*ret;
 	size_t		i, k;
 
-	if (mech_oid->length = sizeof(KNC_KRB5_MECH_OID) - 1 &&
+	if (mech_oid->length == sizeof(KNC_KRB5_MECH_OID) - 1 &&
 	    memcmp(mech_oid->elements, KNC_KRB5_MECH_OID,
-	    sizeof(KNC_KRB5_MECH_OID) - 1) == 0) {
+		   sizeof(KNC_KRB5_MECH_OID) - 1) == 0) {
 		if ((ret = strdup("krb5")) == NULL) {
 			LOG(LOG_ERR, ("unable to malloc"));
 			return NULL;
