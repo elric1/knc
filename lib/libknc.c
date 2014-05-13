@@ -411,9 +411,11 @@ knc_put_stream_mmapbuf(struct knc_stream *s, size_t len, int flags, int fd,
 
 	/* XXXrcd: better errors would be appreciated... */
 
-	if (r->buf == MAP_FAILED)
+	if (r->buf == MAP_FAILED) {
 		/* XXXrcd: leave current errno */
+		free(r);
 		return -1;
+	}
 
 	return knc_put_stream_userbuf(s, (char *)r->buf + add_offset, r->len,
 	    free_mmapbuf, r);
