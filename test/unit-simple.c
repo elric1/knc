@@ -254,8 +254,10 @@ runclient(int fd, const char *hostservice)
 		knc_write(ctx, &len, 4);
 
 		buf = malloc(len);
-		if (!buf)
+		if (!buf) {
 			perror("C: malloc");
+			exit(1);
+		}
 
 		for (j=0; j < len; j++)
 			buf[j] = j % 255;
