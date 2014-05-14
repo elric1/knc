@@ -647,6 +647,7 @@ setup_listener(unsigned short int port) {
 	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
 		LOG_ERRNO(LOG_ERR, ("unable to set SO_REUSEADDR on listener"
 				    " socket"));
+		close(fd);
 		return -1;
 	}
 
