@@ -188,7 +188,10 @@ runserver(int fd)
 			int	 ret;
 
 			buf = malloc(len);
-			/* XXXrcd: errors */
+			if (!buf) {
+				perror("malloc");
+				exit(1);
+			}
 			ret = knc_fullread(ctx, buf, len);
 			free(buf);
 		}
