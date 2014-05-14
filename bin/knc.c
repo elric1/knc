@@ -1560,19 +1560,23 @@ prep_inetd(void) {
 
 	if (dup2(fd, STDIN_FILENO) < 0) {
 		LOG_ERRNO(LOG_ERR, ("failed to nullify STDIN_FILENO"));
+		close(fd);
 		return -1;
 	}
 
 	if (dup2(fd, STDOUT_FILENO) < 0) {
 		LOG_ERRNO(LOG_ERR, ("failed to nullify STDOUT_FILENO"));
+		close(fd);
 		return -1;
 	}
 
 	if (dup2(fd, STDERR_FILENO) < 0) {
 		LOG_ERRNO(LOG_ERR, ("failed to nullify STDERR_FILENO"));
+		close(fd);
 		return -1;
 	}
 
+	close(fd);
 	return net_fd;
 }
 
