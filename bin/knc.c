@@ -1506,6 +1506,7 @@ do_unix_socket(work_t *work) {
 	if (connect(fd, (struct sockaddr *)&pfun, SUN_LEN(&pfun)) < 0) {
 #endif
 		LOG_ERRNO(LOG_ERR, ("failed to connect to %s", pfun.sun_path));
+		close(fd);
 		return 0;
 	}
 
