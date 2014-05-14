@@ -101,7 +101,6 @@ main(int argc, char **argv)
 {
 	int	fd;
 	int	nfd;
-	int	ret;
 
 	if (argc < 3) {
 		fprintf(stderr, "Usage: servefile port file\n");
@@ -118,7 +117,6 @@ main(int argc, char **argv)
 	argv++;
 	for (;;) {
 		pid_t	kid;
-		int	status;
 
 		nfd = accept(fd, NULL, NULL);
 

@@ -232,7 +232,7 @@ runclient(int fd, const char *hostservice)
 	for (i=0; i < 256; i++) {
 		uint32_t	 offset;
 		uint32_t	 len;
-		int		 j;
+		size_t		 j;
 		int		 ret;
 		char		 byte;
 		char		*buf;

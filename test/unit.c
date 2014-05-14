@@ -158,7 +158,7 @@ knc_loop(knc_ctx ctx, int server)
 		nfds_t		nfds;
 
 		fprintf(stderr, "%s: loop start (% 6d), "
-		    "R=% 9d %s S=% 9d %s ToSend=% 9zu\n", server?"S":"C",
+		    "R=% 9d %s S=% 9d %s ToSend=%9zu\n", server?"S":"C",
 		    ++loopcount, valrecv, do_recv?"    ":"done", valsend,
 		    do_send?"    ":"done", knc_pending(ctx, KNC_DIR_SEND));
 
@@ -225,7 +225,7 @@ knc_loop(knc_ctx ctx, int server)
 	}
 
 	fprintf(stderr, "%s: loop done  (% 6d), "
-	    "R=% 9d %s S=% 9d %s ToSend=% 9zu\n", server?"S":"C",
+	    "R=% 9d %s S=% 9d %s ToSend=%9zu\n", server?"S":"C",
 	    ++loopcount, valrecv, do_recv?"    ":"done", valsend,
 	    do_send?"    ":"done", knc_pending(ctx, KNC_DIR_SEND));
 

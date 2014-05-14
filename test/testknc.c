@@ -36,7 +36,6 @@ main(int argc, char **argv)
 {
 	knc_ctx	 ctx;
 	int	 ret;
-	char	*buf;
 
 	if (argc < 2) {
 		fprintf(stderr, "Usage: knc [<service>@]host[:port]\n");
