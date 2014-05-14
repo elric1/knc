@@ -622,6 +622,14 @@ gstd_errstring(char **str, int min_stat)
 			len = sprintf(*str, "%s, %s", tmp, statstr);
 		} else {
 			*str = malloc(status.length + 1);
+			if (!*str) {
+				LOG(LOG_ERR, ("unable to malloc error "
+						"string"));
+				gss_release_buffer(&new_stat, &status);
+				free(statstr);
+				free(tmp);
+				return 0;
+			}
 			len = sprintf(*str, "%s", (char *)statstr);
 		}
 
