@@ -75,6 +75,7 @@ setup_listener(unsigned short port)
 		return -1;
 	}
 
+	memset(&addr, 0x0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port   = ntohs(port);
 
