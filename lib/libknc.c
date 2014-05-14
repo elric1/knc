@@ -31,6 +31,7 @@
 
 #include <netinet/in.h>
 
+#include <assert.h>
 #include <err.h>
 #include <errno.h>
 #define	__USE_GNU
@@ -251,6 +252,8 @@ knc_destroy_stream(struct knc_stream *s)
 static size_t
 knc_append_stream_bit(struct knc_stream *s, struct knc_stream_bit *b)
 {
+
+	assert( (!s->head && !s->tail) || (s->head && s->tail) );
 
 	b->next   = NULL;
 
