@@ -117,7 +117,7 @@
 .Fn knc_shutdown "knc_ctx ctx" "int how"
 .Ss The More Complex Buffer Based Interface
 .Ft int
-.Fn knc_put_buf "struct knc_ctx *ctx" "int dir" "const void *" "int len"
+.Fn knc_put_buf "knc_ctx ctx" "int dir" "const void *" "int len"
 .Ft int
 .Fo knc_put_ubuf
 .Fa "knc_ctx ctx" "int dir" "void *" "size_t len"

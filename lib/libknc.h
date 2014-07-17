@@ -35,8 +35,8 @@
  * The opaque data structure definition:
  */
 
-struct knc_ctx;
-typedef struct knc_ctx *knc_ctx;
+struct internal_knc_ctx;
+typedef struct internal_knc_ctx *knc_ctx;
 
 typedef void (*knc_callback)(knc_ctx);
 

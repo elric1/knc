@@ -84,7 +84,7 @@ struct knc_stream {
 	size_t			 avail;
 };
 
-struct knc_ctx {
+struct internal_knc_ctx {
 	/* GSS input/output data */
 	gss_ctx_id_t		 gssctx;
 	gss_cred_id_t		 cred;		/* both */
