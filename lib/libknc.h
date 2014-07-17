@@ -157,6 +157,7 @@ size_t		knc_get_obufv(knc_ctx, int, int, struct iovec **, int *);
 size_t		knc_get_obufc(knc_ctx, int, void **, size_t);
 size_t		knc_drain_buf(knc_ctx, int, size_t);
 size_t		knc_fill_buf(knc_ctx, int, size_t);
+size_t		knc_avail(knc_ctx, int);
 size_t		knc_pending(knc_ctx, int);
 int		knc_need_input(knc_ctx, int);
 int		knc_can_output(knc_ctx, int);

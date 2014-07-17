@@ -1748,6 +1748,16 @@ knc_fill_buf(knc_ctx ctx, int dir, size_t len)
 }
 
 size_t
+knc_avail(knc_ctx ctx, int dir)
+{
+
+	if (!ctx)
+		return 0;
+
+	return knc_stream_avail(knc_find_buf(ctx, KNC_SIDE_OUT, dir));
+}
+
+size_t
 knc_pending(knc_ctx ctx, int dir)
 {
 	size_t	ret;

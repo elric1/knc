@@ -156,6 +156,8 @@
 .Ft int
 .Fn knc_io_complete "knc_ctx ctx"
 .Ft size_t
+.Fn knc_avail "knc_ctx ctx" "int dir"
+.Ft size_t
 .Fn knc_pending "knc_ctx ctx" "int dir"
 .Ft int
 .Fn knc_need_input "knc_ctx ctx" "int dir"
@@ -604,6 +606,9 @@ would return zero.
 .It Fn knc_io_compete ctx
 returns true if there is no further IO necessary or possible on the
 connexion.
+.It Fn knc_avail ctx dir
+returns the number of bytes in the specified stream which have been
+processed and are ready for consumption.
 .It Fn knc_pending ctx dir
 returns the approximate amount of data in the specified stream.
 More precisely, the returned length will be the sum of the ciphertext
