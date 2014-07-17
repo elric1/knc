@@ -34,6 +34,10 @@
 
 #include <gssapi/gssapi.h>
 
+#ifdef __cplusplus
+exern "C" {
+#endif
+
 /*
  * The opaque data structure definition:
  */
@@ -164,5 +168,9 @@ size_t		knc_avail(knc_ctx, int);
 size_t		knc_pending(knc_ctx, int);
 int		knc_need_input(knc_ctx, int);
 int		knc_can_output(knc_ctx, int);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* defined(LIBKNC_H) */
