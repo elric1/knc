@@ -1700,6 +1700,17 @@ knc_get_obufv(knc_ctx ctx, int dir, int maxcnt, struct iovec **vec, int *count)
 	    vec, count);
 }
 
+size_t
+knc_get_obufc(knc_ctx ctx, int dir, void **buf, size_t len)
+{
+
+	if (!ctx)
+		return 0;
+
+	return knc_get_ostream_contig(knc_find_buf(ctx, KNC_SIDE_OUT, dir),
+	    buf, len);
+}
+
 int
 knc_put_eof(knc_ctx ctx, int dir)
 {

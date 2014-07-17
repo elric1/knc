@@ -141,6 +141,8 @@
 .Fa "struct iovec **vec"
 .Fa "int *count"
 .Fc
+.Ft size_t
+.Fn knc_get_obufc "knc_ctx ctx" "int dir" "void **buf" "size_t len"
 .Ft int
 .Fn knc_drain_buf "knc_ctx ctx" "int dir" "size_t len"
 .Ft int
@@ -540,6 +542,20 @@ This function is designed to provide an interface to
 and thus save the multiple invocations of
 .Xr write 2
 which might be required to emit the data.
+.It Fn knc_get_obufc ctx dir buf len
+will return either a pointer to the output buffer at the current location
+spanning either
+.Ar len
+bytes or the maximum available.
+The size of the output buffer is returned.
+.Fn knc_get_obufc
+may allocate (via
+.Xr malloc 3 )
+a new buffer into which to copy the result under some situations.
+If allocated, this buffer will be
+.Xr free 3 Ns 'd
+by
+.Fn knc_garbage_collect .
 .It Fn knc_drain_buf ctx dir len
 tells KNC that the output buffer
 returned by either
