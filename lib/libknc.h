@@ -23,6 +23,9 @@
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifndef LIBKNC_H
+#define LIBKNC_H
+
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
@@ -161,3 +164,5 @@ size_t		knc_avail(knc_ctx, int);
 size_t		knc_pending(knc_ctx, int);
 int		knc_need_input(knc_ctx, int);
 int		knc_can_output(knc_ctx, int);
+
+#endif /* defined(LIBKNC_H) */
