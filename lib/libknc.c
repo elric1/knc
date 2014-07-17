@@ -163,6 +163,8 @@ struct fd_cookie {
 
 /* mmm, macros. */
 
+#define MAX_IOVCNT	32
+
 #define KNC_GSS_ERROR(_ctx, _maj, _min, _ret, _str) do {		\
 		if (GSS_ERROR((_maj))) {				\
 			knc_gss_error((_ctx), (_maj), (_min), (_str));	\
@@ -203,7 +205,8 @@ static size_t	knc_put_stream(struct knc_stream *, const void *, size_t);
 static size_t	knc_put_stream_gssbuf(struct knc_stream *, gss_buffer_t);
 static size_t	knc_get_istream(struct knc_stream *, void **, size_t);
 static size_t	knc_get_ostream(struct knc_stream *, void **, size_t);
-static size_t	knc_get_ostreamv(struct knc_stream *, struct iovec **, int *);
+static size_t	knc_get_ostreamv(struct knc_stream *, int, struct iovec **,
+		    int *);
 static int	knc_stream_put_trash(struct knc_stream *, void *);
 static size_t	knc_get_ostream_contig(struct knc_stream *, void **, size_t);
 static ssize_t	knc_stream_drain(struct knc_stream *, size_t);
@@ -542,13 +545,12 @@ knc_get_ostream(struct knc_stream *s, void **buf, size_t len)
 	return 0;
 }
 
-#define MAX_IOVCNT	32
-
 static size_t
-knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
+knc_get_ostreamv(struct knc_stream *s, int maxcnt, struct iovec **vec,
+		 int *count)
 {
 	struct knc_stream_bit	*cur;
-	size_t			 i;
+	int			 i;
 	size_t			 len;
 
 	if (!s || !s->cur)
@@ -566,7 +568,7 @@ knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 	i = 0;
 	for (cur = s->cur; cur; cur = cur->next)
 		/* XXXrcd: test length and all of that? */
-		if (i++ == MAX_IOVCNT)
+		if (i++ == maxcnt)
 			break;
 
 	*vec = malloc(i * sizeof(**vec));
@@ -591,11 +593,11 @@ knc_get_ostreamv(struct knc_stream *s, struct iovec **vec, int *count)
 		len += cur->len;
 		DEBUG(("creating iovec element of length %zu, "
 		    "total %zu\n", cur->len, len));
-		if (i++ == MAX_IOVCNT)
+		if (i++ == maxcnt)
 			break;
 	}
 
-	*count = (int)i;
+	*count = i;
 	knc_stream_put_trash(s, *vec);
 
 	return len;
@@ -1688,13 +1690,14 @@ knc_get_obuf(knc_ctx ctx, int dir, void **buf, size_t len)
 }
 
 size_t
-knc_get_obufv(knc_ctx ctx, int dir, struct iovec **vec, int *count)
+knc_get_obufv(knc_ctx ctx, int dir, int maxcnt, struct iovec **vec, int *count)
 {
 
 	if (!ctx)
 		return 0;
 
-	return knc_get_ostreamv(knc_find_buf(ctx,KNC_SIDE_OUT,dir), vec, count);
+	return knc_get_ostreamv(knc_find_buf(ctx,KNC_SIDE_OUT,dir), maxcnt,
+	    vec, count);
 }
 
 int
@@ -2368,7 +2371,7 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 		if (dir == KNC_DIR_SEND)
 			knc_state_process_out(ctx);
 
-		len = knc_get_obufv(ctx, dir, &vec, &iovcnt);
+		len = knc_get_obufv(ctx, dir, MAX_IOVCNT, &vec, &iovcnt);
 		if (len <= 0)
 			break;
 		KNCDEBUG(ctx, ("knc_flush: about to write %zu bytes.\n", len));
