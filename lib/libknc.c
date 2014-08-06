@@ -873,8 +873,8 @@ knc_ctx_init(void)
 	ret->inq_service	= GSS_C_NO_NAME;
 	ret->cred		= GSS_C_NO_CREDENTIAL;
 	ret->cb			= GSS_C_NO_CHANNEL_BINDINGS;
-	ret->req_mech   	= GSS_C_NO_OID;
-	ret->ret_mech   	= GSS_C_NO_OID;
+	ret->req_mech		= GSS_C_NO_OID;
+	ret->ret_mech		= GSS_C_NO_OID;
 	ret->req_flags		= GSS_C_MUTUAL_FLAG | GSS_C_SEQUENCE_FLAG;
 	ret->deleg_cred		= GSS_C_NO_CREDENTIAL;
 

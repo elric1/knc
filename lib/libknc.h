@@ -97,7 +97,7 @@ OM_uint32	knc_get_time_rec(knc_ctx);
 gss_name_t	knc_get_client(knc_ctx);
 gss_name_t	knc_get_service(knc_ctx);
 gss_cred_id_t	knc_get_deleg_cred(knc_ctx);
-void	 	knc_free_deleg_cred(knc_ctx);
+void		knc_free_deleg_cred(knc_ctx);
 void		knc_set_local_fds(knc_ctx, int, int);
 void		knc_set_local_fd(knc_ctx, int);
 void		knc_give_local_fds(knc_ctx, int, int);
