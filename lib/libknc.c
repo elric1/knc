@@ -39,6 +39,7 @@
 #undef	__USE_GNU
 #include <malloc.h>
 #include <netdb.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
@@ -1924,9 +1925,53 @@ fdread(void *cookie, void *buf, size_t len)
 static ssize_t
 fdwritev(void *cookie, const struct iovec *iov, int iovcnt)
 {
-	int	fd = ((struct fd_cookie *)cookie)->wfd;
+	int		fd = ((struct fd_cookie *)cookie)->wfd;
 
+#ifdef O_NOSIGPIPE
 	return writev(fd, iov, iovcnt);
+#else
+	struct timespec	ts_zero = {0, 0};
+	sigset_t	blocked;
+	sigset_t	pending;
+	sigset_t	sigpipe_mask;
+	ssize_t		ret;
+	int		my_errno;
+
+	/*
+	 * On operating systems which do not have O_NOSIGPIPE, we must
+	 * do a bit of a dance to avoid allowing a SIGPIPE to be delivered
+	 * outside our control.  Basically, check to see if there's
+	 * one pending, if not block SIGPIPE, do the writev(2),
+	 * consume any generated SIGPIPE, and restore the old sigmask.
+	 */
+
+	sigemptyset(&blocked);
+	sigemptyset(&pending);
+	sigemptyset(&sigpipe_mask);
+
+	sigaddset(&sigpipe_mask, SIGPIPE);
+	sigpending(&pending);
+
+	if (!sigismember(&pending, SIGPIPE))
+		pthread_sigmask(SIG_BLOCK, &sigpipe_mask, &blocked);
+
+	ret = writev(fd, iov, iovcnt);
+	my_errno = errno;
+
+	if (!sigismember(&pending, SIGPIPE)) {
+		int	ret2;
+
+		do {
+			ret2 = sigtimedwait(&sigpipe_mask, NULL,
+			    &ts_zero);
+		} while (ret2 == -1 && errno == EINTR);
+
+		pthread_sigmask(SIG_SETMASK, &blocked, NULL);
+	}
+
+	errno = my_errno;
+	return ret;
+#endif
 }
 
 static int
