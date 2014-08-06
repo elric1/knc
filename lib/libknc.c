@@ -1871,8 +1871,8 @@ connect_host(knc_ctx ctx, const char *domain, const char *service, int flags)
 	ai.ai_socktype = SOCK_STREAM;
 	ret = getaddrinfo(domain, service, &ai, &res0);
 	if (ret) {
-		KNCDEBUG(ctx, ("getaddrinfo: (%s,%s) %s", domain, service,
-		    gai_strerror(ret)));
+		knc_generic_error(ctx, "getaddrinfo: (%s,%s) %s", domain,
+		    service, gai_strerror(ret));
 		return -1;
 	}
 
@@ -1890,6 +1890,9 @@ connect_host(knc_ctx ctx, const char *domain, const char *service, int flags)
 		s = -1;
 		KNCDEBUG(ctx, ("connect: %s", strerror(errno)));
 	}
+
+	if (s == -1)
+		knc_syscall_error(ctx, "connect_host, connect", errno);
 
 	freeaddrinfo(res0);
 	return s;
@@ -2259,10 +2262,8 @@ knc_connect(knc_ctx ctx, const char *hostservice,
 	knc_import_set_hb_service(ctx, host, service);
 
 	fd = connect_host(ctx, host, port, opts);
-	if (fd == -1) {
-		knc_syscall_error(ctx, "connect_host", errno);
+	if (fd == -1)
 		goto out;
-	}
 
 	knc_set_net_fd(ctx, fd);
 	((struct fd_cookie *)ctx->netcookie)->mine = 1;
@@ -2580,13 +2581,22 @@ knc_errstring(OM_uint32 maj_stat, OM_uint32 min_stat, const char *preamble)
 	return str;
 }
 
-void
-knc_generic_error(knc_ctx ctx, const char *str)
-{
+#define GENERIC_BUFSIZ	1024
 
-	/* XXXrcd: wrong type */
+void
+knc_generic_error(knc_ctx ctx, const char *fmt, ...)
+{
+	va_list ap;
+
 	ctx->error  = KNC_ERROR_GENERIC;
-	ctx->errstr = strdup(str);
+	ctx->errstr = malloc(GENERIC_BUFSIZ);
+
+	if (!ctx->errstr)
+		return;
+
+	va_start(ap, fmt);
+	vsnprintf(ctx->errstr, GENERIC_BUFSIZ, fmt, ap);
+	va_end(ap);
 }
 
 void
