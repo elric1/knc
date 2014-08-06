@@ -35,7 +35,7 @@
 #include <gssapi/gssapi.h>
 
 #ifdef __cplusplus
-exern "C" {
+extern "C" {
 #endif
 
 /*
