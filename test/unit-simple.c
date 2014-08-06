@@ -122,7 +122,7 @@ no_sigpipe(int s)
 	fcntl(s, F_SETFL, flags);
 #else
 	/* This code path will have bugs... */
-	return 0;
+	return;
 #endif
 }
 
