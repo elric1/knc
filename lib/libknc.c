@@ -1785,7 +1785,7 @@ knc_initiate(knc_ctx ctx)
 	/* XXXrcd: sanity! */
 
 #if 0	/* XXXrcd: this should go somewhere... */
-	KNCDEBUG(ctx, ("going to get tickets for: %s", (char *)name.value));
+	KNCDEBUG(ctx, ("going to get tickets for: %s\n", (char *)name.value));
 #endif
 
 	ctx->gssctx = GSS_C_NO_CONTEXT;
@@ -1865,7 +1865,7 @@ connect_host(knc_ctx ctx, const char *domain, const char *service, int flags)
 	int	ret;
 	int	s = -1;
 
-	KNCDEBUG(ctx, ("connecting to (%s, %s)", service, domain));
+	KNCDEBUG(ctx, ("connecting to (%s, %s)...\n", service, domain));
 
 	memset(&ai, 0x0, sizeof(ai));
 	ai.ai_socktype = SOCK_STREAM;
@@ -1880,7 +1880,7 @@ connect_host(knc_ctx ctx, const char *domain, const char *service, int flags)
 		s = get_socket(res->ai_family, res->ai_socktype,
 		    res->ai_protocol, flags);
 		if (s == -1) {
-			KNCDEBUG(ctx, ("connect: %s", strerror(errno)));
+			KNCDEBUG(ctx, ("connect: %s\n", strerror(errno)));
 			continue;
 		}
 		ret = connect(s, res->ai_addr, res->ai_addrlen);
@@ -1888,7 +1888,7 @@ connect_host(knc_ctx ctx, const char *domain, const char *service, int flags)
 			break;
 		close(s);
 		s = -1;
-		KNCDEBUG(ctx, ("connect: %s", strerror(errno)));
+		KNCDEBUG(ctx, ("connect: %s\n", strerror(errno)));
 	}
 
 	if (s == -1)
