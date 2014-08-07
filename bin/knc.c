@@ -275,7 +275,7 @@ main(int argc, char **argv) {
 	prefs.network_fd = -1;			/* wrap connection around
 						   existing socket */
 
-/*      
+/*
  * On linux, you have to prepend + to optstring to cause sane argument
  * processing to occur.  We hardcode this here rather than rely on the
  * user to set POSIXLY_CORRECT because for programs with a syntax that
