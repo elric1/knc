@@ -164,6 +164,11 @@
 **************************************/
 #include "lz4.h"
 
+/**************************************
+   Prototypes
+**************************************/
+
+int LZ4_compress_forceExtDict(LZ4_stream_t*, const char*, char*, int);
 
 /**************************************
    Basic Types
@@ -215,6 +220,10 @@ typedef struct {size_t v;} _PACKED size_t_S;
 #define A64(x)   (((U64_S *)(x))->v)
 #define AARCH(x) (((size_t_S *)(x))->v)
 
+#define C_A16(x)   (((const U16_S *)(x))->v)
+#define C_A32(x)   (((const U32_S *)(x))->v)
+#define C_A64(x)   (((const U64_S *)(x))->v)
+#define C_AARCH(x) (((const size_t_S *)(x))->v)
 
 /**************************************
    Constants
@@ -258,6 +267,15 @@ typedef struct {
     U32  dictSize;
 } LZ4_stream_t_internal;
 
+typedef struct {
+    U32  hashTable[HASH_SIZE_U32];
+    U32  currentOffset;
+    U32  initCheck;
+    BYTE* dictionary;
+    BYTE* bufferStart;
+    U32  dictSize;
+} LZ4_stream_t_internal_nc;
+
 typedef enum { notLimited = 0, limitedOutput = 1 } limitedOutput_directive;
 typedef enum { byPtr, byU32, byU16 } tableType_t;
 
@@ -272,14 +290,14 @@ typedef enum { full = 0, partial = 1 } earlyEnd_directive;
    Architecture-specific macros
 **************************************/
 #define STEPSIZE                  sizeof(size_t)
-#define LZ4_COPYSTEP(d,s)         { AARCH(d) = AARCH(s); d+=STEPSIZE; s+=STEPSIZE; }
+#define LZ4_COPYSTEP(d,s)         { AARCH(d) = C_AARCH(s); d+=STEPSIZE; s+=STEPSIZE; }
 #define LZ4_COPY8(d,s)            { LZ4_COPYSTEP(d,s); if (STEPSIZE<8) LZ4_COPYSTEP(d,s); }
 
 #if (defined(LZ4_BIG_ENDIAN) && !defined(BIG_ENDIAN_NATIVE_BUT_INCOMPATIBLE))
-#  define LZ4_READ_LITTLEENDIAN_16(d,s,p) { U16 v = A16(p); v = lz4_bswap16(v); d = (s) - v; }
+#  define LZ4_READ_LITTLEENDIAN_16(d,s,p) { U16 v = C_A16(p); v = lz4_bswap16(v); d = (s) - v; }
 #  define LZ4_WRITE_LITTLEENDIAN_16(p,i)  { U16 v = (U16)(i); v = lz4_bswap16(v); A16(p) = v; p+=2; }
 #else      /* Little Endian */
-#  define LZ4_READ_LITTLEENDIAN_16(d,s,p) { d = (s) - A16(p); }
+#  define LZ4_READ_LITTLEENDIAN_16(d,s,p) { d = (s) - C_A16(p); }
 #  define LZ4_WRITE_LITTLEENDIAN_16(p,v)  { A16(p) = v; p+=2; }
 #endif
 
@@ -378,7 +396,7 @@ static int LZ4_hashSequence(U32 sequence, tableType_t tableType)
         return (((sequence) * 2654435761U) >> ((MINMATCH*8)-LZ4_HASHLOG));
 }
 
-static int LZ4_hashPosition(const BYTE* p, tableType_t tableType) { return LZ4_hashSequence(A32(p), tableType); }
+static int LZ4_hashPosition(const BYTE* p, tableType_t tableType) { return LZ4_hashSequence(C_A32(p), tableType); }
 
 static void LZ4_putPositionOnHash(const BYTE* p, U32 h, void* tableBase, tableType_t tableType, const BYTE* srcBase)
 {
@@ -415,13 +433,13 @@ static unsigned LZ4_count(const BYTE* pIn, const BYTE* pRef, const BYTE* pInLimi
 
     while (likely(pIn<pInLimit-(STEPSIZE-1)))
     {
-        size_t diff = AARCH(pRef) ^ AARCH(pIn);
+        size_t diff = C_AARCH(pRef) ^ C_AARCH(pIn);
         if (!diff) { pIn+=STEPSIZE; pRef+=STEPSIZE; continue; }
         pIn += LZ4_NbCommonBytes(diff);
         return (unsigned)(pIn - pStart);
     }
-    if (LZ4_64BITS) if ((pIn<(pInLimit-3)) && (A32(pRef) == A32(pIn))) { pIn+=4; pRef+=4; }
-    if ((pIn<(pInLimit-1)) && (A16(pRef) == A16(pIn))) { pIn+=2; pRef+=2; }
+    if (LZ4_64BITS) if ((pIn<(pInLimit-3)) && (C_A32(pRef) == C_A32(pIn))) { pIn+=4; pRef+=4; }
+    if ((pIn<(pInLimit-1)) && (C_A16(pRef) == C_A16(pIn))) { pIn+=2; pRef+=2; }
     if ((pIn<pInLimit) && (*pRef == *pIn)) pIn++;
 
     return (unsigned)(pIn - pStart);
@@ -524,7 +542,7 @@ static int LZ4_compress_generic(
 
             } while ( ((dictIssue==dictSmall) ? (ref < lowRefLimit) : 0)
                 || ((tableType==byU16) ? 0 : (ref + MAX_DISTANCE < ip))
-                || (A32(ref+refDelta) != A32(ip)) );
+                || (C_A32(ref+refDelta) != C_A32(ip)) );
         }
 
         /* Catch up */
@@ -617,7 +635,7 @@ _next_match:
         LZ4_putPosition(ip, ctx, tableType, base);
         if ( ((dictIssue==dictSmall) ? (ref>=lowRefLimit) : 1)
             && (ref+MAX_DISTANCE>=ip)
-            && (A32(ref+refDelta)==A32(ip)) )
+            && (C_A32(ref+refDelta)==C_A32(ip)) )
         { token=op++; *token=0; goto _next_match; }
 
         /* Prepare next loop */
@@ -977,15 +995,15 @@ FORCE_INLINE int LZ4_decompress_generic(
         {
             if (unlikely(op+length+MINMATCH > oend-LASTLITERALS)) goto _output_error;
 
-            if (length+MINMATCH <= (size_t)(dest-(char*)ref))
+            if (length+MINMATCH <= (size_t)(dest-(const char*)ref))
             {
-                ref = dictEnd - (dest-(char*)ref);
+                ref = dictEnd - (dest-(const char*)ref);
                 memcpy(op, ref, length+MINMATCH);
                 op += length+MINMATCH;
             }
             else
             {
-                size_t copySize = (size_t)(dest-(char*)ref);
+                size_t copySize = (size_t)(dest-(const char*)ref);
                 memcpy(op, dictEnd - copySize, copySize);
                 op += copySize;
                 copySize = length+MINMATCH - copySize;
@@ -1013,7 +1031,7 @@ FORCE_INLINE int LZ4_decompress_generic(
             op[2] = ref[2];
             op[3] = ref[3];
             ref += dec32table[op-ref];
-            A32(op+4) = A32(ref);
+            A32(op+4) = C_A32(ref);
             op += STEPSIZE; ref -= dec64;
         } else { LZ4_COPYSTEP(op,ref); }
         cpy = op + length - (STEPSIZE-4);
@@ -1034,11 +1052,11 @@ FORCE_INLINE int LZ4_decompress_generic(
     if (endOnInput)
        return (int) (((char*)op)-dest);     /* Nb of output bytes decoded */
     else
-       return (int) (((char*)ip)-source);   /* Nb of input bytes read */
+       return (int) (((const char*)ip)-source);   /* Nb of input bytes read */
 
     /* Overflow error detected */
 _output_error:
-    return (int) (-(((char*)ip)-source))-1;
+    return (int) (-(((const char*)ip)-source))-1;
 }
 
 
@@ -1201,13 +1219,13 @@ void* LZ4_create (const char* inputBuffer)
     return lz4ds;
 }
 
-char* LZ4_slideInputBuffer (void* LZ4_Data)
+const char* LZ4_slideInputBuffer (void* LZ4_Data)
 {
-    LZ4_stream_t_internal* lz4ds = (LZ4_stream_t_internal*)LZ4_Data;
+    LZ4_stream_t_internal_nc* lz4ds = (LZ4_stream_t_internal_nc*)LZ4_Data;
 
     LZ4_saveDict((LZ4_stream_t*)LZ4_Data, (char*)lz4ds->bufferStart, 64 KB);
 
-    return (char*)(lz4ds->bufferStart + 64 KB);
+    return (const char*)(lz4ds->bufferStart + 64 KB);
 }
 
 /*  Obsolete compresson functions using User-allocated state */

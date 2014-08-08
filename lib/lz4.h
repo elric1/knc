@@ -298,8 +298,8 @@ They are only provided here for compatibility with older user programs.
 - LZ4_uncompress_unknownOutputSize is the same as LZ4_decompress_safe
 These function prototypes are now disabled; uncomment them if you really need them.
 It is highly recommended to stop using these functions and migrated to newer ones */
-/* int LZ4_uncompress (const char* source, char* dest, int outputSize); */
-/* int LZ4_uncompress_unknownOutputSize (const char* source, char* dest, int isize, int maxOutputSize); */
+int LZ4_uncompress (const char* source, char* dest, int outputSize);
+int LZ4_uncompress_unknownOutputSize (const char* source, char* dest, int isize, int maxOutputSize);
 
 /*
  * If you prefer dynamic allocation methods,
@@ -314,7 +314,7 @@ It is highly recommended to stop using these functions and migrated to newer one
 void* LZ4_create (const char* inputBuffer);
 int   LZ4_sizeofStreamState(void);
 int   LZ4_resetStreamState(void* state, const char* inputBuffer);
-char* LZ4_slideInputBuffer (void* state);
+const char* LZ4_slideInputBuffer (void* state);
 
 /* Obsolete streaming decoding functions */
 int LZ4_decompress_safe_withPrefix64k (const char* source, char* dest, int compressedSize, int maxOutputSize);
