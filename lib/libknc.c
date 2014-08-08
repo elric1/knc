@@ -106,6 +106,8 @@ struct internal_knc_ctx {
 
 	/* Connexion state data */
 	int			 opts;
+	size_t			 sent_tot;
+	size_t			 recv_tot;
 
 	int			 locally_initiated;
 	int			 open;
@@ -2552,10 +2554,11 @@ knc_fill(knc_ctx ctx, int dir)
 int
 knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 {
-	struct iovec	*vec;
-	int		 iovcnt;
-	size_t		 completelen = 0;
-	ssize_t		 len;
+	struct iovec	 *vec;
+	int		  iovcnt;
+	size_t		  completelen = 0;
+	ssize_t		  len;
+	size_t		 *total;
 	ssize_t		(*ourwritev)(void *, const struct iovec *, int);
 	void		 *ourcookie;
 
@@ -2565,9 +2568,11 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 	if (dir == KNC_DIR_SEND) {
 		ourwritev =  ctx->netwritev;
 		ourcookie =  ctx->netcookie;
+		total     = &ctx->sent_tot;
 	} else {
 		ourwritev =  ctx->localwritev;
 		ourcookie =  ctx->localcookie;
+		total     = &ctx->recv_tot;
 	}
 
 	/* XXXrcd: deal with ctx->open */
@@ -2588,7 +2593,9 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 			return errno_switch(ctx, errno, "writev");
 		}
 
-		KNCDEBUG(ctx, ("knc_flush: wrote %zd bytes.\n", len));
+		*total += len;
+		KNCDEBUG(ctx, ("knc_flush: wrote %zd bytes, total=%zd\n",
+		    len, *total));
 		knc_drain_buf(ctx, dir, (size_t)len);
 
 		knc_garbage_collect(ctx);
