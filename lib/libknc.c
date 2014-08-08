@@ -1418,13 +1418,120 @@ knc_state_session(knc_ctx ctx, void *buf, size_t len)
 	return 0;
 }
 
+/*ARGSUSED*/
+static int
+cmd_unknown(knc_ctx ctx, uint32_t cmdseqno, void *data, size_t len)
+{
+
+	knc_put_command(ctx, "dont_understand", cmdseqno, NULL, 0);
+	return 0;
+}
+
+/*ARGSUSED*/
+static int
+cmd_dont_understand(knc_ctx ctx, uint32_t cmdseqno, void *data, size_t len)
+{
+
+	return 0;
+}
+
+/*ARGSUSED*/
+static int
+cmd_txt_error(knc_ctx ctx, uint32_t cmdseqno, void *data, size_t len)
+{
+
+	/* XXXrcd: this should set error state and kill the connexion */
+	return 0;
+}
+
+typedef int (*process_command)(knc_ctx, uint32_t, void *, size_t);
+
+struct {
+	const char	*cmd;
+	process_command	 f;
+} string_cmds[] = {
+	{ "dont_understand",	cmd_dont_understand},
+	{ "txt_error",		cmd_txt_error},
+	{ NULL,			NULL},
+
+	/* XXXrcd: send buffer size change requests? */
+	/*
+	 * XXXrcd: set gss_wrap_buf_siz as well.  Maybe take min of
+	 *         both side's proposals.
+	 */
+	/* XXXrcd: how about TCP buffers... */
+	/* XXXrcd: keepalives? should contain data? */
+};
+
+static process_command
+command_match(const char *value, size_t len, uint32_t *cmdseqno, void **retbuf,
+	      size_t *retlen)
+{
+	size_t	 i;
+
+	/*
+	 * The remaining commands shall have a format of:
+	 *
+	 *	cmdseqno	uint32_t network byte order
+	 *	command		nul-terminated string
+	 *	data		dependent on command
+	 *
+	 * The cmdseqno exists so that it is possible to reply to commands,
+	 * if a reply is not necessary then it can be set to zero, otherwise
+	 * it should be set to a value not shared with any  other outstanding
+	 * command.  XXXrcd: should provide a framework for same when the
+	 * time becomes ripe.
+	 *
+	 * The command shall be in the format of cmd[@dns_domain], where
+	 * the organisation defining the command controls the DNS domain
+	 * dns_domain and undertakes to keep control of said domain for
+	 * the foreseeable future.  A lack of dns_domain is reserved for
+	 * the original author.
+	 *
+	 * We use strings here in this way as we would like to avoid the
+	 * issues of allocating numbers centrally.  This scheme is inspired
+	 * by the SSH2 protocol.
+	 *
+	 * We drop malformed commands without reply, XXXrcd: perhaps we
+	 * should simply drop the entire connexion?
+	 *
+	 * Not all commands have replies, e.g. replies.
+	 */
+
+	if (len < sizeof(*cmdseqno) + 2)
+		return NULL;
+
+	memcpy(cmdseqno, value, sizeof(*cmdseqno));
+	*cmdseqno = ntohl(*cmdseqno);
+
+	value += sizeof(*cmdseqno);
+	len   -= sizeof(*cmdseqno);
+
+	*retbuf = memchr(value, 0x0, len);
+	if (!*retbuf)
+		return NULL;
+
+	retbuf++;
+	*retlen = len - ((const char *)*retbuf - (const char *)value);
+
+	for (i=0; string_cmds[i].cmd; i++)
+		if (!strcmp(value, string_cmds[i].cmd))
+			return string_cmds[i].f;
+
+	return cmd_unknown;
+}
+
 static int
 knc_state_command(knc_ctx ctx, void *buf, size_t len)
 {
-	gss_buffer_desc	in;
-	gss_buffer_desc	out;
-	OM_uint32	maj;
-	OM_uint32	min;
+	gss_buffer_desc	 in;
+	gss_buffer_desc	 out;
+	OM_uint32	 maj;
+	OM_uint32	 min;
+	process_command	 cmd;
+	uint32_t	 cmdseqno;
+	void		*cmdbuf;
+	size_t		 cmdbuflen;
 
 	in.value  = buf;
 	in.length = len;
@@ -1477,17 +1584,15 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 		return 0;
 	}
 
-	/*
-	 * XXXrcd: unknown command.  should we continue?  yes, for now.
-	 *         Nico wants to return an error to the other side, we
-	 *         will implement that before the release.  To do this,
-	 *         we should like number the commands so that the other
-	 *         end knows which one we are not implementing.  This
-	 *         will require that some structure be defined for the
-	 *         commands in advance of the first release...
-	 */
+	cmd = command_match(out.value, out.length, &cmdseqno, &cmdbuf,
+	    &cmdbuflen);
 
-	return 0;
+	if (cmd)
+		return cmd(ctx, cmdseqno, cmdbuf, cmdbuflen);
+	else
+		/* XXXrcd: what to do here? */
+		/* XXXrcd: this is malformed from earlier comment. */
+		return 0;
 }
 
 static int
@@ -1728,6 +1833,37 @@ knc_put_eof(knc_ctx ctx, int dir)
 
 	knc_put_stream_command(&ctx->raw_send, buf, 1);
 	return 0;
+}
+
+int
+knc_put_command(knc_ctx ctx, const char *cmd, uint32_t cmdseqno, void *data,
+		size_t datalen)
+{
+	char	*buf;
+	char	*tmp;
+	size_t	 len = 0;
+
+	tmp = buf = malloc(strlen(cmd) + 1 + sizeof(cmdseqno) + datalen);
+	if (!buf)
+		return 0;
+
+	cmdseqno = htonl(cmdseqno);
+	memcpy(buf, &cmdseqno, sizeof(cmdseqno));
+
+	tmp += sizeof(cmdseqno);
+	len += sizeof(cmdseqno);
+
+	strcpy(tmp, cmd);
+
+	tmp += strlen(cmd) + 1;
+	len += strlen(cmd) + 1;
+
+	if (datalen > 0) {
+		memcpy(tmp, data, datalen);
+		len += datalen;
+	}
+
+	return knc_put_stream_command(&ctx->raw_send, buf, len);
 }
 
 size_t
