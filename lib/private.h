@@ -10,4 +10,5 @@ void	knc_generic_error(knc_ctx, const char *, ...)
 void	knc_syscall_error(knc_ctx, const char *, int);
 void	knc_gss_error(knc_ctx, OM_uint32, OM_uint32, const char *);
 
-int	knc_put_command(knc_ctx, const char *, uint32_t, void *, size_t);
+int	knc_put_command(knc_ctx, const char *, uint32_t, const void *,
+	    uint32_t);

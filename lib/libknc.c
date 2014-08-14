@@ -1466,16 +1466,23 @@ struct {
 };
 
 static process_command
-command_match(const char *value, size_t len, uint32_t *cmdseqno, void **retbuf,
-	      size_t *retlen)
+command_match(knc_ctx ctx, uint32_t *cmdseqno, char **retbuf, uint32_t *retlen)
 {
-	size_t	 i;
+	const char	*value;
+	size_t		 len;
+	size_t		 i;
+
+	/* retbuf and retlen are inputs and outputs */
+
+	value = *retbuf;
+	len   = *retlen;
 
 	/*
 	 * The remaining commands shall have a format of:
 	 *
 	 *	cmdseqno	uint32_t network byte order
 	 *	command		nul-terminated string
+	 *	datalen		uint32_t netword byte order
 	 *	data		dependent on command
 	 *
 	 * The cmdseqno exists so that it is possible to reply to commands,
@@ -1500,7 +1507,7 @@ command_match(const char *value, size_t len, uint32_t *cmdseqno, void **retbuf,
 	 * Not all commands have replies, e.g. replies.
 	 */
 
-	if (len < sizeof(*cmdseqno) + 2)
+	if (len < sizeof(*cmdseqno) + 2 + sizeof(*retlen))
 		return NULL;
 
 	memcpy(cmdseqno, value, sizeof(*cmdseqno));
@@ -1513,8 +1520,23 @@ command_match(const char *value, size_t len, uint32_t *cmdseqno, void **retbuf,
 	if (!*retbuf)
 		return NULL;
 
-	retbuf++;
-	*retlen = len - ((const char *)*retbuf - (const char *)value);
+	*retbuf += 1;
+	len -= ((const char *)*retbuf - (const char *)value);
+
+	if (len < sizeof(*retlen))
+		return NULL;
+
+	memcpy(retlen, *retbuf, sizeof(*retlen));
+	*retlen = ntohl(*retlen);
+
+	*retbuf += sizeof(*retlen);
+	len     -= sizeof(*retlen);
+
+	if (len < *retlen)
+		return NULL;
+
+	KNCDEBUG(ctx, ("Received command \"%s\", seq=%u, \"%.*s\", len=%u\n",
+	    value, *cmdseqno, (int)*retlen, *retbuf, *retlen));
 
 	for (i=0; string_cmds[i].cmd; i++)
 		if (!strcmp(value, string_cmds[i].cmd))
@@ -1532,8 +1554,9 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 	OM_uint32	 min;
 	process_command	 cmd;
 	uint32_t	 cmdseqno;
-	void		*cmdbuf;
-	size_t		 cmdbuflen;
+	char		*cmdbuf;
+	uint32_t	 cmdbuflen;
+	size_t		 remainlen;
 
 	in.value  = buf;
 	in.length = len;
@@ -1586,15 +1609,28 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 		return 0;
 	}
 
-	cmd = command_match(out.value, out.length, &cmdseqno, &cmdbuf,
-	    &cmdbuflen);
+	cmdbuf    = out.value;
+	remainlen = out.length;
+	do {
+		void	*oldptr = cmdbuf;
 
-	if (cmd)
-		return cmd(ctx, cmdseqno, cmdbuf, cmdbuflen);
-	else
-		/* XXXrcd: what to do here? */
-		/* XXXrcd: this is malformed from earlier comment. */
-		return 0;
+		cmdbuflen = remainlen;
+
+		cmd = command_match(ctx, &cmdseqno, &cmdbuf, &cmdbuflen);
+		if (!cmd) {
+			knc_generic_error(ctx, "Malformed command packet");
+			goto done;
+		}
+
+		cmd(ctx, cmdseqno, cmdbuf, cmdbuflen);
+
+		cmdbuf    += cmdbuflen;
+		remainlen -= (const char *)cmdbuf - (const char *)oldptr;
+	} while (remainlen > 0);
+
+done:
+	gss_release_buffer(&min, &out);
+	return 0;
 }
 
 static int
@@ -1838,32 +1874,44 @@ knc_put_eof(knc_ctx ctx, int dir)
 }
 
 int
-knc_put_command(knc_ctx ctx, const char *cmd, uint32_t cmdseqno, void *data,
-		size_t datalen)
+knc_put_command(knc_ctx ctx, const char *cmd, uint32_t cmdseqno,
+		const void *data, uint32_t datalen)
 {
 	char	*buf;
 	char	*tmp;
 	size_t	 len = 0;
+	size_t	 tlen = 0;
 
-	tmp = buf = malloc(strlen(cmd) + 1 + sizeof(cmdseqno) + datalen);
+	len = sizeof(cmdseqno) + strlen(cmd) + 1 + sizeof(datalen) + datalen;
+	tmp = buf = malloc(len);
 	if (!buf)
 		return 0;
 
 	cmdseqno = htonl(cmdseqno);
-	memcpy(buf, &cmdseqno, sizeof(cmdseqno));
+	memcpy(tmp, &cmdseqno, sizeof(cmdseqno));
 
 	tmp += sizeof(cmdseqno);
-	len += sizeof(cmdseqno);
+	tlen += sizeof(cmdseqno);
 
 	strcpy(tmp, cmd);
 
 	tmp += strlen(cmd) + 1;
-	len += strlen(cmd) + 1;
+	tlen += strlen(cmd) + 1;
+
+	datalen = htonl(datalen);
+	memcpy(tmp, &datalen, sizeof(datalen));
+
+	tmp += sizeof(datalen);
+	tlen += sizeof(datalen);
+
+	datalen = ntohl(datalen);
 
 	if (datalen > 0) {
 		memcpy(tmp, data, datalen);
-		len += datalen;
+		tlen += datalen;
 	}
+
+	assert(tlen == len);
 
 	return knc_put_stream_command(&ctx->raw_send, buf, len);
 }
