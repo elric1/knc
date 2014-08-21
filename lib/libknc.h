@@ -115,6 +115,7 @@ nfds_t		knc_get_pollfds(knc_ctx, struct pollfd *, knc_callback *,
 void		knc_service_pollfds(knc_ctx, struct pollfd *, knc_callback *,
 				    nfds_t);
 void		knc_set_debug(knc_ctx, int);
+void		knc_set_debug_prefix(knc_ctx, const char *);
 
 /* Error handling */
 
