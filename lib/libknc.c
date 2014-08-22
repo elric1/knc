@@ -242,11 +242,15 @@ debug_printf(knc_ctx ctx, const char *fmt, ...)
 	if (ctx && !ctx->debug)
 		return;
 
-	if (!*ctx->debug_prefix)
-		snprintf(ctx->debug_prefix, sizeof(ctx->debug_prefix), "%d",
-		    getpid());
+#ifdef LOW_LEVEL_DEBUGGERY
+	if (!ctx && !debug)
+		return;
+#endif
 
-	fprintf(stderr, "%s: ", ctx->debug_prefix);
+	if (ctx && *ctx->debug_prefix)
+		fprintf(stderr, "%s: ", ctx->debug_prefix);
+	else
+		fprintf(stderr, "%d: ", getpid());
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
@@ -538,7 +542,7 @@ knc_get_ostream(struct knc_stream *s, void **buf, size_t len)
 		/* Nothing here... */
 		return 0;
 
-	DEBUG(("knc_get_ostream: s->cur = %p\n", s->cur));
+	DEBUG((NULL, "knc_get_ostream: s->cur = %p\n", s->cur));
 
 	/* XXXrcd: hmmm, what if bufpos moves us beyond the stream? */
 
@@ -595,14 +599,14 @@ knc_get_ostreamv(struct knc_stream *s, int maxcnt, struct iovec **vec,
 	(*vec)[i  ].iov_base = (char *)cur->buf + s->bufpos;
 	(*vec)[i++].iov_len  = cur->len - s->bufpos;
 	len += cur->len - s->bufpos;
-	DEBUG(("creating iovec element of length %zu, total %zu\n",
+	DEBUG((NULL, "creating iovec element of length %zu, total %zu\n",
 	    len, len));
 
 	for (cur = cur->next; cur; cur = cur->next) {
 		(*vec)[i].iov_base = cur->buf;
 		(*vec)[i].iov_len  = cur->len;
 		len += cur->len;
-		DEBUG(("creating iovec element of length %zu, "
+		DEBUG((NULL, "creating iovec element of length %zu, "
 		    "total %zu\n", cur->len, len));
 		if (i++ == maxcnt)
 			break;
@@ -677,14 +681,14 @@ static ssize_t
 knc_stream_drain(struct knc_stream *s, size_t len)
 {
 
-	DEBUG(("knc_stream_drain called with %zu\n", len));
+	DEBUG((NULL, "knc_stream_drain called with %zu\n", len));
 
 	if (!s->cur)
 		return -1;
 
 	/* XXXrcd: sanity */
-	DEBUG(("knc_stream_drain(%zu) start: s->cur=%p, avail=%zu bufpos=%zu\n",
-	    len, s->cur, s->avail, s->bufpos));
+	DEBUG((NULL, "knc_stream_drain(%zu) start: s->cur=%p, avail=%zu "
+	    "bufpos=%zu\n", len, s->cur, s->avail, s->bufpos));
 
 	s->avail  -= len;
 	s->bufpos += len;
@@ -700,7 +704,7 @@ knc_stream_drain(struct knc_stream *s, size_t len)
 		}
 	}
 
-	DEBUG(("knc_stream_drain end: s->cur = %p\n", s->cur));
+	DEBUG((NULL, "knc_stream_drain end: s->cur = %p\n", s->cur));
 
 	return len;
 }
@@ -806,14 +810,14 @@ read_packet(struct knc_stream *s, void **buf)
 	uint32_t	 wirelen;
 	void		*tmp;
 
-	DEBUG(("read_packet: enter\n"));
+	DEBUG((NULL, "read_packet: enter\n"));
 
 	if (knc_get_ostream_contig(s, &tmp, 4) < 4)
 		return 0;
 
 	wirelen = ntohl(*((uint32_t *)tmp));
 
-	DEBUG(("read_packet: got wirelen = %u\n", wirelen));
+	DEBUG((NULL, "read_packet: got wirelen = %u\n", wirelen));
 	if (knc_stream_avail(s) < (size_t)wirelen + 4)
 		return 0;
 
@@ -821,7 +825,7 @@ read_packet(struct knc_stream *s, void **buf)
 
 	/* Okay, now we know that we've got an entire packet */
 
-	DEBUG(("read_packet: getting %u bytes\n", wirelen));
+	DEBUG((NULL, "read_packet: getting %u bytes\n", wirelen));
 	len = knc_get_ostream_contig(s, buf, wirelen);
 
 	if (len != wirelen)
@@ -829,7 +833,7 @@ read_packet(struct knc_stream *s, void **buf)
 
 	knc_stream_drain(s, len);
 
-	DEBUG(("read_packet: %zu left in stream\n", s->avail));
+	DEBUG((NULL, "read_packet: %zu left in stream\n", s->avail));
 	/* XXXrcd: broken, I think. */
 
 	return len;
