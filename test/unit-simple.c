@@ -37,9 +37,35 @@
 
 #include <libknc.h>
 
-int runserver(int);
-int runclient(int, const char *);
-int knc_loop(knc_ctx, int);
+/*
+ * On linux, you have to prepend + to optstring to cause sane argument
+ * processing to occur.  We hardcode this here rather than rely on the
+ * user to set POSIXLY_CORRECT because for programs with a syntax that
+ * accepts another program which has arguments, the GNU convention is
+ * particularly stupid.
+ */
+#ifdef linux
+#define POS "+"
+#else
+#define POS
+#endif
+
+int  runserver(int);
+int  runclient(int, const char *);
+int  knc_loop(knc_ctx, int);
+void usage(void);
+
+/* Global variables */
+
+int debug = 0;
+
+void
+usage(void)
+{
+
+	fprintf(stderr, "unit-simple [-d] service@hostname\n");
+	exit(EXIT_FAILURE);
+}
 
 /*
  * unit-simple: a simple test of the libknc.
@@ -57,13 +83,26 @@ main(int argc, char **argv)
 	int	fds[2];
 	int	kidret;
 	int	ret;
+	int	c;
 
 	srandom(time(NULL));
-
-	if (argc != 2) {
-		fprintf(stderr, "Usage: unit-simple hostservice\n");
-		exit(1);
+ 
+        /* process arguments */
+	while ((c = getopt(argc, argv, POS "d")) != -1) {
+		switch (c) {
+		case 'd':
+			debug = 1;
+			break;
+		default:
+			usage();
+		}
 	}
+
+	argc -= optind;
+	argv += optind;
+
+	if (argc != 1)
+		usage();
 
 	ret = socketpair(PF_LOCAL, SOCK_STREAM, 0, fds);
 	if (ret == -1) {
@@ -83,7 +122,7 @@ main(int argc, char **argv)
 		exit(1);
 	default:
 		close(fds[1]);
-		ret = runclient(fds[0], argv[1]);
+		ret = runclient(fds[0], argv[0]);
 		break;
 	}
 
@@ -140,6 +179,8 @@ runserver(int fd)
 
 	ctx = knc_ctx_init();
 
+	knc_set_debug(ctx, debug);
+	knc_set_debug_prefix(ctx, "S");
 	knc_give_net_fd(ctx, fd);
 	knc_accept(ctx);
 
@@ -218,6 +259,8 @@ runclient(int fd, const char *hostservice)
 
 	ctx = knc_ctx_init();
 
+	knc_set_debug(ctx, debug);
+	knc_set_debug_prefix(ctx, "C");
 	knc_import_set_hb_service(ctx, hostservice, NULL);
 	knc_give_net_fd(ctx, fd);
 	knc_initiate(ctx);
