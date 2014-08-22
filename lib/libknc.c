@@ -206,6 +206,8 @@ static size_t			 knc_append_stream_bit(struct knc_stream *,
 				    struct knc_stream_bit *);
 
 static size_t	knc_put_stream(struct knc_stream *, const void *, size_t);
+static size_t	knc_put_stream_userbuf(struct knc_stream *, void *, size_t,
+		    void (*)(void *, void *), void *);
 static size_t	knc_put_stream_gssbuf(struct knc_stream *, gss_buffer_t);
 static size_t	knc_get_istream(struct knc_stream *, void **, size_t);
 static size_t	knc_get_ostream(struct knc_stream *, void **, size_t);
