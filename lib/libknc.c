@@ -2450,6 +2450,7 @@ run_loop(knc_ctx ctx)
 	int		ret;
 
 	nfds = knc_get_pollfds(ctx, fds, cbs, 4);
+	/* XXXrcd: should have timeout != -1 */
 	ret = poll(fds, nfds, -1);
 	if (ret == -1) {
 		if (errno != EINTR)
