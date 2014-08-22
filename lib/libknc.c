@@ -83,6 +83,7 @@ struct knc_stream {
 	struct knc_stream_bit	*cur;
 	struct knc_stream_bit	*tail;
 	struct knc_stream_gc	*garbage;
+	int			 collecting;	/* g/c is ongoing */
 	size_t			 bufpos;
 	size_t			 avail;
 };
@@ -775,8 +776,16 @@ knc_stream_garbage_collect(struct knc_stream *s)
 	struct knc_stream_gc	*gc;
 	struct knc_stream_gc	*tmpgc;
 
-	if (!s)
+	if (!s || s->collecting)
 		return;
+
+	/*
+	 * s->collecting isn't a mutex because we aren't supposed
+	 * to be thread safe.  We are simply making sure that when
+	 * we call our callback that it is safe for it to run
+	 * knc_garbage_collect().
+	 */
+	s->collecting = 1;
 
 	while (s->head && s->head != s->cur) {
 		tmpbit = s->head->next;
@@ -803,6 +812,7 @@ knc_stream_garbage_collect(struct knc_stream *s)
 	}
 
 	s->garbage = NULL;
+	s->collecting = 0;
 }
 
 static size_t
