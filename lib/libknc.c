@@ -60,7 +60,7 @@
 #include "libknc.h"
 #include "private.h"
 
-struct knc_stream_bit {
+struct stream_bit {
 	int			  type;
 #define	STREAM_BUFFER	0x1
 #define STREAM_COMMAND	0x2
@@ -68,25 +68,29 @@ struct knc_stream_bit {
 	void			 *buf;
 	void			(*free)(void *, void *);
 	void			 *cookie;
-	struct knc_stream_bit	 *next;
+	struct stream_bit	 *next;
 	size_t			  len;
 	size_t			  allocated;
 };
 
-struct knc_stream_gc {
+struct stream_gc {
 	void			*ptr;
-	struct knc_stream_gc	*next;
+	struct stream_gc	*next;
 };
 
-struct knc_stream {
-	struct knc_stream_bit	*head;
-	struct knc_stream_bit	*cur;
-	struct knc_stream_bit	*tail;
-	struct knc_stream_gc	*garbage;
+struct stream {
+	struct stream_bit	*head;
+	struct stream_bit	*cur;
+	struct stream_bit	*tail;
+	struct stream_gc	*garbage;
 	int			 collecting;	/* g/c is ongoing */
 	size_t			 bufpos;
 	size_t			 avail;
 };
+
+typedef struct stream_bit *stream_bit;
+typedef struct stream_gc *stream_gc;
+typedef struct stream *stream;
 
 struct internal_knc_ctx {
 	/* GSS input/output data */
@@ -138,10 +142,10 @@ struct internal_knc_ctx {
 	size_t			 sendmax;	/* XXXrcd: hmmm */
 	size_t			 gssmaxpacket;
 
-	struct knc_stream	 raw_recv;
-	struct knc_stream	 cooked_recv;
-	struct knc_stream	 raw_send;
-	struct knc_stream	 cooked_send;
+	struct stream		 raw_recv;
+	struct stream		 cooked_recv;
+	struct stream		 raw_send;
+	struct stream		 cooked_send;
 
 	/*
 	 * These are the read/write/close functions, they will be executed
@@ -202,27 +206,26 @@ int debug = 0;
 static void	debug_printf(knc_ctx, const char *, ...)
     __attribute__((__format__(__printf__, 2, 3)));
 
-static struct knc_stream_bit	*knc_alloc_stream_bit(int, size_t);
-static size_t			 knc_append_stream_bit(struct knc_stream *,
-				    struct knc_stream_bit *);
+static void		destroy_stream(stream);
+static stream_bit	alloc_stream_bit(int, size_t);
+static size_t		append_stream_bit(stream, stream_bit);
 
-static size_t	knc_put_stream(struct knc_stream *, const void *, size_t);
-static size_t	knc_put_stream_userbuf(struct knc_stream *, void *, size_t,
+static size_t	put_stream(stream, const void *, size_t);
+static size_t	put_stream_userbuf(stream, void *, size_t,
 		    void (*)(void *, void *), void *);
-static size_t	knc_put_stream_gssbuf(struct knc_stream *, gss_buffer_t);
-static size_t	knc_get_istream(struct knc_stream *, void **, size_t);
-static size_t	knc_get_ostream(struct knc_stream *, void **, size_t);
-static size_t	knc_get_ostreamv(struct knc_stream *, int, struct iovec **,
-		    int *);
-static int	knc_stream_put_trash(struct knc_stream *, void *);
-static size_t	knc_get_ostream_contig(struct knc_stream *, void **, size_t);
-static ssize_t	knc_stream_drain(struct knc_stream *, size_t);
-static ssize_t	knc_stream_fill(struct knc_stream *, size_t);
-static size_t	knc_stream_avail(struct knc_stream *);
-static void	knc_stream_garbage_collect(struct knc_stream *);
+static size_t	put_stream_gssbuf(stream, gss_buffer_t);
+static size_t	get_istream(stream, void **, size_t);
+static size_t	get_ostream(stream, void **, size_t);
+static size_t	get_ostreamv(stream, int, struct iovec **, int *);
+static int	stream_put_trash(stream, void *);
+static size_t	get_ostream_contig(stream, void **, size_t);
+static ssize_t	stream_drain(stream, size_t);
+static ssize_t	stream_fill(stream, size_t);
+static size_t	stream_avail(stream);
+static void	stream_garbage_collect(stream);
 
 static int	socket_options(int, int);
-static size_t	read_packet(struct knc_stream *, void **b);
+static size_t	read_packet(stream, void **b);
 static size_t	put_packet(knc_ctx, gss_buffer_t);
 static size_t	wrap_and_put_packet(knc_ctx, char *, size_t);
 
@@ -233,7 +236,7 @@ static int	knc_state_command(knc_ctx, void *, size_t);
 static int	knc_state_process_in(knc_ctx);
 static int	knc_state_process_out(knc_ctx);
 
-static struct knc_stream *knc_find_buf(knc_ctx, int, int);
+static stream	knc_find_buf(knc_ctx, int, int);
 
 /* And, ta da: the code */
 
@@ -260,18 +263,18 @@ debug_printf(knc_ctx ctx, const char *fmt, ...)
 }
 
 static void
-knc_destroy_stream(struct knc_stream *s)
+destroy_stream(stream s)
 {
 
 	if (!s)
 		return;
 
 	s->cur = NULL;
-	knc_stream_garbage_collect(s);
+	stream_garbage_collect(s);
 }
 
 static size_t
-knc_append_stream_bit(struct knc_stream *s, struct knc_stream_bit *b)
+append_stream_bit(stream s, stream_bit b)
 {
 
 	assert( (!s->head && !s->tail) || (s->head && s->tail) );
@@ -295,11 +298,11 @@ knc_append_stream_bit(struct knc_stream *s, struct knc_stream_bit *b)
 
 #define STREAM_BIT_ALLOC_UNIT	(64 * 1024)
 
-static struct knc_stream_bit *
-knc_alloc_stream_bit(int type, size_t len)
+static stream_bit
+alloc_stream_bit(int type, size_t len)
 {
-	struct knc_stream_bit	*bit;
-	char			*tmpbuf;
+	stream_bit	 bit;
+	char		*tmpbuf;
 
 	len  = len / STREAM_BIT_ALLOC_UNIT + (len % STREAM_BIT_ALLOC_UNIT)?1:0;
 	len *= STREAM_BIT_ALLOC_UNIT;
@@ -324,21 +327,21 @@ knc_alloc_stream_bit(int type, size_t len)
 }
 
 static size_t
-knc_put_stream(struct knc_stream *s, const void *buf, size_t len)
+put_stream(stream s, const void *buf, size_t len)
 {
 	void	*newbuf;
 	size_t	 ret;
 	size_t	 total = 0;
 
 	while (len > 0) {
-		ret = knc_get_istream(s, &newbuf, len);
+		ret = get_istream(s, &newbuf, len);
 
 		if (!ret)
 			/* malloc failed: stop */
 			break;
 
 		memcpy(newbuf, buf, ret);
-		knc_stream_fill(s, ret);
+		stream_fill(s, ret);
 
 		len   -= ret;
 		total += ret;
@@ -348,10 +351,10 @@ knc_put_stream(struct knc_stream *s, const void *buf, size_t len)
 }
 
 static size_t
-knc_put_stream_userbuf(struct knc_stream *s, void *buf, size_t len,
-		       void (*callback)(void *, void *), void *cookie)
+put_stream_userbuf(stream s, void *buf, size_t len,
+		   void (*callback)(void *, void *), void *cookie)
 {
-	struct knc_stream_bit	*bit;
+	stream_bit	bit;
 
 	bit = calloc(1, sizeof(*bit));
 	if (!bit)
@@ -365,7 +368,7 @@ knc_put_stream_userbuf(struct knc_stream *s, void *buf, size_t len,
 	bit->free	= callback;
 	bit->cookie	= cookie;
 
-	return knc_append_stream_bit(s, bit);
+	return append_stream_bit(s, bit);
 }
 
 /*ARGSUSED*/
@@ -379,7 +382,7 @@ free_gssbuf(void *buf, void *cookie)
 }
 
 static size_t
-knc_put_stream_gssbuf(struct knc_stream *s, gss_buffer_t inbuf)
+put_stream_gssbuf(stream s, gss_buffer_t inbuf)
 {
 	gss_buffer_t	buf;
 
@@ -391,7 +394,7 @@ knc_put_stream_gssbuf(struct knc_stream *s, gss_buffer_t inbuf)
 	buf->value  = inbuf->value;
 	buf->length = inbuf->length;
 
-	return knc_put_stream_userbuf(s, buf->value, buf->length, free_gssbuf,
+	return put_stream_userbuf(s, buf->value, buf->length, free_gssbuf,
 	    buf);
 }
 
@@ -417,7 +420,7 @@ free_mmapbuf(void *buf, void *cookie)
  */
 
 static ssize_t
-knc_put_stream_mmapbuf(struct knc_stream *s, size_t len, int flags, int fd,
+put_stream_mmapbuf(struct stream *s, size_t len, int flags, int fd,
 		       off_t offset)
 {
 	struct mmapregion	*r;
@@ -441,14 +444,14 @@ knc_put_stream_mmapbuf(struct knc_stream *s, size_t len, int flags, int fd,
 		return -1;
 	}
 
-	return knc_put_stream_userbuf(s, (char *)r->buf + add_offset, r->len,
+	return put_stream_userbuf(s, (char *)r->buf + add_offset, r->len,
 	    free_mmapbuf, r);
 }
 
 static size_t
-knc_put_stream_command(struct knc_stream *s, void *buf, size_t len)
+put_stream_command(stream s, void *buf, size_t len)
 {
-	struct knc_stream_bit	*tmp;
+	stream_bit	tmp;
 
 	/* Must mark current one as being full, innit? */
 
@@ -459,7 +462,7 @@ knc_put_stream_command(struct knc_stream *s, void *buf, size_t len)
 	 * XXXrcd: might be an idea to use a new alloc which doesn't
 	 *         try to make a buffer that we can grow into per se.
 	 */
-	tmp = knc_alloc_stream_bit(STREAM_COMMAND, len);
+	tmp = alloc_stream_bit(STREAM_COMMAND, len);
 	if (!tmp)
 		return 0;
 
@@ -467,13 +470,13 @@ knc_put_stream_command(struct knc_stream *s, void *buf, size_t len)
 	tmp->len = len;
 	tmp->allocated = len;
 
-	knc_append_stream_bit(s, tmp);
+	append_stream_bit(s, tmp);
 
 	return len;
 }
 
 static int
-knc_get_stream_bit_type(struct knc_stream *s)
+knc_get_stream_bit_type(stream s)
 {
 
 	if (!s || !s->cur)
@@ -483,7 +486,7 @@ knc_get_stream_bit_type(struct knc_stream *s)
 }
 
 static void *
-knc_get_stream_command(struct knc_stream *s, size_t *len)
+knc_get_stream_command(stream s, size_t *len)
 {
 	void	*ret;
 
@@ -501,10 +504,10 @@ knc_get_stream_command(struct knc_stream *s, size_t *len)
 }
 
 static size_t
-knc_get_istream(struct knc_stream *s, void **buf, size_t len)
+get_istream(stream s, void **buf, size_t len)
 {
-	struct knc_stream_bit	*tmp;
-	size_t			 remaining;
+	stream_bit	tmp;
+	size_t		remaining;
 
 	if (!s) {
 		/* XXXrcd: better errors... */
@@ -520,32 +523,32 @@ knc_get_istream(struct knc_stream *s, void **buf, size_t len)
 		}
 	}
 
-	tmp = knc_alloc_stream_bit(STREAM_BUFFER, len);
+	tmp = alloc_stream_bit(STREAM_BUFFER, len);
 	if (!tmp)
 		return 0;
 
-	knc_append_stream_bit(s, tmp);
+	append_stream_bit(s, tmp);
 
 	*buf = tmp->buf;
 	return MIN(len, tmp->allocated);
 }
 
 /*
- * knc_get_ostream specifically only returns a single knc_stream_bit.
- * knc_get_ostream returns a ptr into its data structure, the caller
+ * get_ostream specifically only returns a single stream_bit.
+ * get_ostream returns a ptr into its data structure, the caller
  * may not modify it.  This allows the caller to construct an iovec
  * for writing.
  */
 
 static size_t
-knc_get_ostream(struct knc_stream *s, void **buf, size_t len)
+get_ostream(stream s, void **buf, size_t len)
 {
 
 	if (!s || !s->cur)
 		/* Nothing here... */
 		return 0;
 
-	DEBUG((NULL, "knc_get_ostream: s->cur = %p\n", s->cur));
+	DEBUG((NULL, "get_ostream: s->cur = %p\n", s->cur));
 
 	/* XXXrcd: hmmm, what if bufpos moves us beyond the stream? */
 
@@ -564,12 +567,12 @@ knc_get_ostream(struct knc_stream *s, void **buf, size_t len)
 }
 
 static size_t
-knc_get_ostreamv(struct knc_stream *s, int maxcnt, struct iovec **vec,
-		 int *count)
+get_ostreamv(stream s, int maxcnt, struct iovec **vec,
+	     int *count)
 {
-	struct knc_stream_bit	*cur;
-	int			 i;
-	size_t			 len;
+	stream_bit	cur;
+	int		i;
+	size_t		len;
 
 	if (!s || !s->cur)
 		/* Nothing here */
@@ -616,31 +619,31 @@ knc_get_ostreamv(struct knc_stream *s, int maxcnt, struct iovec **vec,
 	}
 
 	*count = i;
-	knc_stream_put_trash(s, *vec);
+	stream_put_trash(s, *vec);
 
 	return len;
 }
 
 /*
- * knc_get_ostream_contig() will fetch an entire contiguous newly allocated
+ * get_ostream_contig() will fetch an entire contiguous newly allocated
  * buffer of the desired length, if it exists.  This may involve copying, but
  * it may not.  The caller is still not allowed to either modify or free(3)
  * the returned buffer.
  */
 
 static size_t
-knc_get_ostream_contig(struct knc_stream *s, void **buf, size_t len)
+get_ostream_contig(stream s, void **buf, size_t len)
 {
-	struct knc_stream_bit	*cur;
-	size_t			 retlen;
-	size_t			 tmplen;
+	stream_bit	cur;
+	size_t		retlen;
+	size_t		tmplen;
 
 	if (!s || !s->cur)
 		return 0;
 
 	/* We adjust len down to the available bytes */
 
-	tmplen = knc_stream_avail(s);
+	tmplen = stream_avail(s);
 	len = MIN(tmplen, len);
 
 	/*
@@ -648,7 +651,7 @@ knc_get_ostream_contig(struct knc_stream *s, void **buf, size_t len)
 	 * If we do, we can process this request without copying.
 	 */
 
-	tmplen = knc_get_ostream(s, buf, len);
+	tmplen = get_ostream(s, buf, len);
 	if (tmplen == len)
 		return len;
 
@@ -657,7 +660,7 @@ knc_get_ostream_contig(struct knc_stream *s, void **buf, size_t len)
 	*buf = malloc(len);
 	if (*buf == NULL)
 		return 0;
-	knc_stream_put_trash(s, *buf);
+	stream_put_trash(s, *buf);
 
 	retlen = 0;
 	cur = s->cur;
@@ -681,16 +684,16 @@ knc_get_ostream_contig(struct knc_stream *s, void **buf, size_t len)
 }
 
 static ssize_t
-knc_stream_drain(struct knc_stream *s, size_t len)
+stream_drain(stream s, size_t len)
 {
 
-	DEBUG((NULL, "knc_stream_drain called with %zu\n", len));
+	DEBUG((NULL, "stream_drain called with %zu\n", len));
 
 	if (!s->cur)
 		return -1;
 
 	/* XXXrcd: sanity */
-	DEBUG((NULL, "knc_stream_drain(%zu) start: s->cur=%p, avail=%zu "
+	DEBUG((NULL, "stream_drain(%zu) start: s->cur=%p, avail=%zu "
 	    "bufpos=%zu\n", len, s->cur, s->avail, s->bufpos));
 
 	s->avail  -= len;
@@ -707,13 +710,13 @@ knc_stream_drain(struct knc_stream *s, size_t len)
 		}
 	}
 
-	DEBUG((NULL, "knc_stream_drain end: s->cur = %p\n", s->cur));
+	DEBUG((NULL, "stream_drain end: s->cur = %p\n", s->cur));
 
 	return len;
 }
 
 static ssize_t
-knc_stream_fill(struct knc_stream *s, size_t len)
+stream_fill(stream s, size_t len)
 {
 
 	/* XXXrcd: perform sanity */
@@ -733,16 +736,16 @@ knc_stream_fill(struct knc_stream *s, size_t len)
 }
 
 static size_t
-knc_stream_avail(struct knc_stream *s)
+stream_avail(stream s)
 {
 
 	return s->avail;
 }
 
 static int
-knc_stream_put_trash(struct knc_stream *s, void *ptr)
+stream_put_trash(stream s, void *ptr)
 {
-	struct knc_stream_gc	*tmp;
+	stream_gc	tmp;
 
 	/*
 	 * XXXrcd: we should allocate space for the rubbish before
@@ -764,17 +767,17 @@ knc_stream_put_trash(struct knc_stream *s, void *ptr)
 }
 
 /*
- * knc_stream_garbage_collect is provided because knc_get_ostream does
+ * stream_garbage_collect is provided because get_ostream does
  * not actually deallocate the memory that is associated with it.
  * knc_clean_buf() will deallocate all memory between head and cur.
  */
 
 static void
-knc_stream_garbage_collect(struct knc_stream *s)
+stream_garbage_collect(stream s)
 {
-	struct knc_stream_bit	*tmpbit;
-	struct knc_stream_gc	*gc;
-	struct knc_stream_gc	*tmpgc;
+	stream_bit	tmpbit;
+	stream_gc	gc;
+	stream_gc	tmpgc;
 
 	if (!s || s->collecting)
 		return;
@@ -816,7 +819,7 @@ knc_stream_garbage_collect(struct knc_stream *s)
 }
 
 static size_t
-read_packet(struct knc_stream *s, void **buf)
+read_packet(stream s, void **buf)
 {
 	size_t		 len;
 	uint32_t	 wirelen;
@@ -824,26 +827,26 @@ read_packet(struct knc_stream *s, void **buf)
 
 	DEBUG((NULL, "read_packet: enter\n"));
 
-	if (knc_get_ostream_contig(s, &tmp, 4) < 4)
+	if (get_ostream_contig(s, &tmp, 4) < 4)
 		return 0;
 
 	wirelen = ntohl(*((uint32_t *)tmp));
 
 	DEBUG((NULL, "read_packet: got wirelen = %u\n", wirelen));
-	if (knc_stream_avail(s) < (size_t)wirelen + 4)
+	if (stream_avail(s) < (size_t)wirelen + 4)
 		return 0;
 
-	knc_stream_drain(s, 4);
+	stream_drain(s, 4);
 
 	/* Okay, now we know that we've got an entire packet */
 
 	DEBUG((NULL, "read_packet: getting %u bytes\n", wirelen));
-	len = knc_get_ostream_contig(s, buf, wirelen);
+	len = get_ostream_contig(s, buf, wirelen);
 
 	if (len != wirelen)
 		abort();	/* XXXrcd: really shouldn't happen. */
 
-	knc_stream_drain(s, len);
+	stream_drain(s, len);
 
 	DEBUG((NULL, "read_packet: %zu left in stream\n", s->avail));
 	/* XXXrcd: broken, I think. */
@@ -857,8 +860,8 @@ put_packet(knc_ctx ctx, gss_buffer_t buf)
 	uint32_t	netlen;
 
 	netlen = htonl((uint32_t)buf->length);
-	knc_put_stream(&ctx->cooked_send, &netlen, 4);
-	knc_put_stream_gssbuf(&ctx->cooked_send, buf);
+	put_stream(&ctx->cooked_send, &netlen, 4);
+	put_stream_gssbuf(&ctx->cooked_send, buf);
 
 	/* XXXrcd: useful to return this?  What about errors? */
 	return 0;
@@ -963,10 +966,10 @@ knc_ctx_destroy(knc_ctx ctx)
 
 	free(ctx->errstr);
 
-	knc_destroy_stream(&ctx->raw_recv);
-	knc_destroy_stream(&ctx->cooked_recv);
-	knc_destroy_stream(&ctx->raw_send);
-	knc_destroy_stream(&ctx->cooked_send);
+	destroy_stream(&ctx->raw_recv);
+	destroy_stream(&ctx->cooked_recv);
+	destroy_stream(&ctx->raw_send);
+	destroy_stream(&ctx->cooked_send);
 
 	free(ctx);
 }
@@ -1444,7 +1447,7 @@ knc_state_session(knc_ctx ctx, void *buf, size_t len)
 		return -1;
 	}
 
-	knc_put_stream_gssbuf(&ctx->cooked_recv, &out);
+	put_stream_gssbuf(&ctx->cooked_recv, &out);
 
 	return 0;
 }
@@ -1736,7 +1739,7 @@ knc_state_process_out(knc_ctx ctx)
 	if (ctx->state != STATE_SESSION && ctx->state != STATE_COMMAND)
 		return 0;
 
-	while (knc_stream_avail(&ctx->cooked_send) < ctx->sendmax) {
+	while (stream_avail(&ctx->cooked_send) < ctx->sendmax) {
 		switch (knc_get_stream_bit_type(&ctx->raw_send)) {
 		case STREAM_COMMAND:
 			buf = knc_get_stream_command(&ctx->raw_send, &len);
@@ -1750,7 +1753,7 @@ knc_state_process_out(knc_ctx ctx)
 			 * the job of the receiver easier.
 			 */
 
-			len = knc_get_ostream_contig(&ctx->raw_send, &buf,
+			len = get_ostream_contig(&ctx->raw_send, &buf,
 			    ctx->gssmaxpacket);
 
 			if (len < 1) {
@@ -1766,7 +1769,7 @@ knc_state_process_out(knc_ctx ctx)
 			}
 
 			wrap_and_put_packet(ctx, buf, len);
-			knc_stream_drain(&ctx->raw_send, len);
+			stream_drain(&ctx->raw_send, len);
 			break;
 		default:
 			return 0;
@@ -1782,10 +1785,10 @@ knc_state_process_out(knc_ctx ctx)
 #define KNC_SIDE_IN	0x100
 #define KNC_SIDE_OUT	0x200
 
-static struct knc_stream *
+static stream
 knc_find_buf(knc_ctx ctx, int side, int dir)
 {
-	struct knc_stream	*s;
+	stream	s;
 
 	switch (side | dir) {
 	case KNC_DIR_RECV|KNC_SIDE_OUT:
@@ -1816,7 +1819,7 @@ knc_put_buf(knc_ctx ctx, int dir, const void *buf, size_t len)
 	if (!ctx)
 		return 0;
 
-	return knc_put_stream(knc_find_buf(ctx, KNC_SIDE_IN, dir), buf, len);
+	return put_stream(knc_find_buf(ctx, KNC_SIDE_IN, dir), buf, len);
 }
 
 size_t
@@ -1829,7 +1832,7 @@ knc_put_ubuf(knc_ctx ctx, int dir, void *buf, size_t len,
 		return 0;
 	}
 
-	return knc_put_stream_userbuf(knc_find_buf(ctx, KNC_SIDE_IN, dir),
+	return put_stream_userbuf(knc_find_buf(ctx, KNC_SIDE_IN, dir),
 	    buf, len, callback, cookie);
 }
 
@@ -1843,7 +1846,7 @@ knc_put_mmapbuf(knc_ctx ctx, int dir, size_t len, int flags, int fd,
 		return -1;
 	}
 
-	return knc_put_stream_mmapbuf(knc_find_buf(ctx, KNC_SIDE_IN, dir),
+	return put_stream_mmapbuf(knc_find_buf(ctx, KNC_SIDE_IN, dir),
 	    len, flags, fd, offset);
 }
 
@@ -1854,7 +1857,7 @@ knc_get_ibuf(knc_ctx ctx, int dir, void **buf, size_t len)
 	if (!ctx)
 		return 0;
 
-	return knc_get_istream(knc_find_buf(ctx, KNC_SIDE_IN, dir), buf, len);
+	return get_istream(knc_find_buf(ctx, KNC_SIDE_IN, dir), buf, len);
 }
 
 size_t
@@ -1864,7 +1867,7 @@ knc_get_obuf(knc_ctx ctx, int dir, void **buf, size_t len)
 	if (!ctx)
 		return 0;
 
-	return knc_get_ostream(knc_find_buf(ctx, KNC_SIDE_OUT, dir), buf, len);
+	return get_ostream(knc_find_buf(ctx, KNC_SIDE_OUT, dir), buf, len);
 }
 
 size_t
@@ -1874,7 +1877,7 @@ knc_get_obufv(knc_ctx ctx, int dir, int maxcnt, struct iovec **vec, int *count)
 	if (!ctx)
 		return 0;
 
-	return knc_get_ostreamv(knc_find_buf(ctx,KNC_SIDE_OUT,dir), maxcnt,
+	return get_ostreamv(knc_find_buf(ctx,KNC_SIDE_OUT,dir), maxcnt,
 	    vec, count);
 }
 
@@ -1885,7 +1888,7 @@ knc_get_obufc(knc_ctx ctx, int dir, void **buf, size_t len)
 	if (!ctx)
 		return 0;
 
-	return knc_get_ostream_contig(knc_find_buf(ctx, KNC_SIDE_OUT, dir),
+	return get_ostream_contig(knc_find_buf(ctx, KNC_SIDE_OUT, dir),
 	    buf, len);
 }
 
@@ -1903,7 +1906,7 @@ knc_put_eof(knc_ctx ctx, int dir)
 		buf[0] = 1;
 	}
 
-	knc_put_stream_command(&ctx->raw_send, buf, 1);
+	put_stream_command(&ctx->raw_send, buf, 1);
 	return 0;
 }
 
@@ -1949,7 +1952,7 @@ knc_put_command(knc_ctx ctx, const char *cmd, uint32_t cmdseqno,
 
 	KNCDEBUG((ctx, "putting command: %s seq=%u\n", cmd, cmdseqno));
 
-	return knc_put_stream_command(&ctx->raw_send, buf, len);
+	return put_stream_command(&ctx->raw_send, buf, len);
 }
 
 size_t
@@ -1959,7 +1962,7 @@ knc_drain_buf(knc_ctx ctx, int dir, size_t len)
 	if (!ctx)
 		return 0;
 
-	return knc_stream_drain(knc_find_buf(ctx, KNC_SIDE_OUT, dir), len);
+	return stream_drain(knc_find_buf(ctx, KNC_SIDE_OUT, dir), len);
 }
 
 size_t
@@ -1969,7 +1972,7 @@ knc_fill_buf(knc_ctx ctx, int dir, size_t len)
 	if (!ctx)
 		return 0;
 
-	return knc_stream_fill(knc_find_buf(ctx, KNC_SIDE_IN, dir), len);
+	return stream_fill(knc_find_buf(ctx, KNC_SIDE_IN, dir), len);
 }
 
 size_t
@@ -1979,7 +1982,7 @@ knc_avail(knc_ctx ctx, int dir)
 	if (!ctx)
 		return 0;
 
-	return knc_stream_avail(knc_find_buf(ctx, KNC_SIDE_OUT, dir));
+	return stream_avail(knc_find_buf(ctx, KNC_SIDE_OUT, dir));
 }
 
 size_t
@@ -1993,8 +1996,8 @@ knc_pending(knc_ctx ctx, int dir)
 //	if (ctx->state != STATE_SESSION)
 //		return 0;
 
-	ret  = knc_stream_avail(knc_find_buf(ctx, KNC_SIDE_OUT, dir));
-	ret += knc_stream_avail(knc_find_buf(ctx, KNC_SIDE_IN,  dir));
+	ret  = stream_avail(knc_find_buf(ctx, KNC_SIDE_OUT, dir));
+	ret += stream_avail(knc_find_buf(ctx, KNC_SIDE_IN,  dir));
 
 	return ret;
 }
@@ -2132,10 +2135,10 @@ knc_garbage_collect(knc_ctx ctx)
 	if (!ctx)
 		return;
 
-	knc_stream_garbage_collect(&ctx->raw_recv);
-	knc_stream_garbage_collect(&ctx->raw_send);
-	knc_stream_garbage_collect(&ctx->cooked_recv);
-	knc_stream_garbage_collect(&ctx->cooked_send);
+	stream_garbage_collect(&ctx->raw_recv);
+	stream_garbage_collect(&ctx->raw_send);
+	stream_garbage_collect(&ctx->cooked_recv);
+	stream_garbage_collect(&ctx->cooked_send);
 }
 
 static ssize_t
@@ -2368,7 +2371,7 @@ knc_need_input(knc_ctx ctx, int dir)
 	 */
 
 	if (dir == KNC_DIR_RECV)
-		return knc_stream_avail(&ctx->cooked_recv) < ctx->recvinbufsiz;
+		return stream_avail(&ctx->cooked_recv) < ctx->recvinbufsiz;
 
 	return knc_pending(ctx, KNC_DIR_SEND) < ctx->sendinbufsiz;
 }
