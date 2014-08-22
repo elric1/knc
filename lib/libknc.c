@@ -2711,7 +2711,7 @@ knc_shutdown(knc_ctx ctx, int how)
 	}
 
 	/* XXXrcd: should we flush?  Hmmm, maybe not? */
-	knc_flush(ctx, KNC_DIR_SEND, -1);
+	// knc_flush(ctx, KNC_DIR_SEND, -1);
 
 	/*
 	 * XXXrcd: think through a little more... getting off train in
@@ -2730,8 +2730,13 @@ knc_close(knc_ctx ctx)
 	if (ret)
 		return ret;
 
-	while (!knc_eof(ctx) && !knc_error(ctx))
+	while (!knc_eof(ctx) && !knc_error(ctx)) {
 		run_loop(ctx);
+                ret = knc_avail(ctx, KNC_DIR_RECV);
+
+                if (ret > 0)
+			knc_drain_buf(ctx, KNC_DIR_RECV, ret);
+	}
 
 	return 0;
 }
