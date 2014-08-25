@@ -2205,10 +2205,13 @@ static int
 fdclose(void *cookie)
 {
 	struct fd_cookie	*fdc = cookie;
+	int			 mine = fdc->mine;
 	int			 rfd = fdc->rfd;
 	int			 wfd = fdc->wfd;
 
-	if (!fdc->mine)
+	free(cookie);
+
+	if (!mine)
 		return 0;
 
 	if (rfd != wfd)
