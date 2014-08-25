@@ -1626,13 +1626,13 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 		if (ctx->open & OPEN_READ)
 			knc_put_eof(ctx, KNC_DIR_RECV);
 		ctx->open &= ~(OPEN_READ|OPEN_WRITE);
-		return 0;
+		goto done;
 	}
 
 	if (out.length == 1 && *(char *)out.value == 0) {
 		KNCDEBUG((ctx, "knc_state_command: received read EOF\n"));
 		ctx->open &= ~OPEN_READ;
-		return 0;
+		goto done;
 	}
 
 	if (out.length == 1 && *(char *)out.value == 1) {
@@ -1641,7 +1641,7 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 		if (ctx->open & OPEN_WRITE)
 			knc_put_eof(ctx, KNC_DIR_SEND);
 		ctx->open &= ~OPEN_WRITE;
-		return 0;
+		goto done;
 	}
 
 	cmdbuf    = out.value;
