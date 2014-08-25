@@ -2768,8 +2768,12 @@ int
 knc_eof(knc_ctx ctx)
 {
 
-	if (ctx && (ctx->open & OPEN_READ))
+	if (!ctx)
+		return 1;
+
+	if ((ctx->open & OPEN_READ) || !knc_pending(ctx, KNC_DIR_SEND))
 		return 0;
+
 	return 1;
 }
 
