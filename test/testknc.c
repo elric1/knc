@@ -31,27 +31,56 @@
 
 #include <libknc.h>
 
+/*
+ * On linux, you have to prepend + to optstring to cause sane argument
+ * processing to occur.  We hardcode this here rather than rely on the
+ * user to set POSIXLY_CORRECT because for programs with a syntax that
+ * accepts another program which has arguments, the GNU convention is
+ * particularly stupid.
+ */
+#ifdef linux
+#define POS "+"
+#else
+#define POS
+#endif
+
+static void
+usage(void)
+{
+
+	fprintf(stderr, "Usage: knc [-d] [<service>@]host[:port]\n");
+	exit(EXIT_FAILURE);
+}
+
 int
 main(int argc, char **argv)
 {
-	knc_ctx	 ctx;
-	int	 ret;
-
-	if (argc < 2) {
-		fprintf(stderr, "Usage: knc [<service>@]host[:port]\n");
-		exit(1);
+	knc_ctx	ctx;
+	int	ret;
+	int	debug = 0;
+	int	c;
+ 
+        /* process arguments */
+	while ((c = getopt(argc, argv, POS "d")) != -1) {
+		switch (c) {
+		case 'd':
+			debug = 1;
+			break;
+		default:
+			usage();
+		}
 	}
 
-	ctx = knc_connect(NULL, *++argv, "host", NULL, 0);
+	argc -= optind;
+	argv += optind;
 
-	if (!ctx) {
-		/* XXXrcd: better? */
-		fprintf(stderr, "out of memory\n");
-		exit(1);
-	}
+	if (argc != 1)
+		usage();
 
+	ctx = knc_ctx_init();
+	knc_set_debug(ctx, debug);
+	knc_connect(ctx, *argv, "host", NULL, 0);
 	knc_set_local_fds(ctx, STDIN_FILENO, STDOUT_FILENO);
-//	knc_set_debug(ctx, 1);
 
 	for (;;) {
 		knc_callback	cbs[4];
@@ -64,7 +93,7 @@ main(int argc, char **argv)
 		 *         packets and whatnot...
 		 */
 
-		if (knc_eof(ctx) && knc_error(ctx))
+		if (knc_eof(ctx) || knc_error(ctx))
 			break;
 
 		if (knc_eof(ctx))
