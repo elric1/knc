@@ -14,6 +14,23 @@
 
 #include <libknc.h>
 
+/*
+ * On linux, you have to prepend + to optstring to cause sane argument
+ * processing to occur.  We hardcode this here rather than rely on the
+ * user to set POSIXLY_CORRECT because for programs with a syntax that
+ * accepts another program which has arguments, the GNU convention is
+ * particularly stupid.
+ */
+#ifdef linux
+#define POS "+"
+#else
+#define POS
+#endif
+
+/* Global variables */
+
+int	debug = 0;	/* it's okay, this is a test program */
+
 static void
 serve_file(int nfd, const char *fn)
 {
@@ -24,7 +41,7 @@ serve_file(int nfd, const char *fn)
 
 	fd = open(fn, O_RDONLY, 0);
 	if (fd == -1) {
-		fprintf(stderr, "open: %s\n", strerror(errno));
+		fprintf(stderr, "open(\"%s\"): %s\n", fn, strerror(errno));
 		exit(1);
 	}
 
@@ -41,6 +58,7 @@ serve_file(int nfd, const char *fn)
 		exit(1);
 	}
 
+	knc_set_debug(ctx, debug);
 	knc_set_net_fd(ctx, nfd);
 
 	knc_accept(ctx);
@@ -96,25 +114,45 @@ setup_listener(unsigned short port)
 	return fd;
 }
 
+static void
+usage(void)
+{
+
+	fprintf(stderr, "Usage: servefile port file\n");
+	exit(EXIT_FAILURE);
+}
+
 int
 main(int argc, char **argv)
 {
 	int	fd;
 	int	nfd;
-
-	if (argc < 3) {
-		fprintf(stderr, "Usage: servefile port file\n");
-		exit(1);
+	int	c;
+ 
+        /* process arguments */
+	while ((c = getopt(argc, argv, POS "d")) != -1) {
+		switch (c) {
+		case 'd':
+			debug = 1;
+			break;
+		default:
+			usage();
+		}
 	}
 
-	fd = setup_listener(atoi(*++argv));
+	argc -= optind;
+	argv += optind;
+
+	if (argc != 2)
+		usage();
+
+	fd = setup_listener(atoi(argv[0]));
 	if (fd == -1)
 		exit(1);
 
 	/* don't bother reaping, this is a test program... */
 	signal(SIGCHLD, SIG_IGN);
 
-	argv++;
 	for (;;) {
 		pid_t	kid;
 
@@ -129,7 +167,7 @@ main(int argc, char **argv)
 			break;
 		case 0:
 			close(fd);
-			serve_file(nfd, *argv);
+			serve_file(nfd, argv[1]);
 			exit(0);
 		default:
 			close(nfd);
