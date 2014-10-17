@@ -58,6 +58,7 @@
 /* #include <netdb.h> */
 
 #include <errno.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,7 +77,8 @@ extern char _log_buff[2048];
 /* The rest of them are internal utility functions */
 
 static int	write_packet(int, gss_buffer_t);
-static int	read_packet(int, gss_buffer_t);
+static ssize_t	timed_read(int, void *, size_t, int);
+static int	read_packet(int, gss_buffer_t, int);
 static int	gstd_errstring(char **, int);
 
 #define SETUP_GSTD_TOK(x,y,z,w) do {					\
@@ -209,7 +211,7 @@ gstd_accept(int fd, char **display_creds, char **export_name, char **mech)
 	out.length = 0;
 	in.length = 0;
 again:
-	while ((ret = read_packet(fd, &in)) == -2)
+	while ((ret = read_packet(fd, &in, 60000)) == -2)
 		;
 
 	if (ret < 1)
@@ -296,7 +298,7 @@ again:
 
 	if (maj & GSS_S_CONTINUE_NEEDED) {
 		LOG(LOG_DEBUG, ("continuing gstd_initiate"));
-		while ((ret = read_packet(fd, &in)) == -2)
+		while ((ret = read_packet(fd, &in, 0)) == -2)
 			;
 
 		if (ret < 1) {
@@ -338,7 +340,7 @@ gstd_read(void *the_tok, char *buf, int length)
 		 * If we encounter a protocol botch or if the other side has
 		 * closed the connection, we return that fact here
 		 */
-		ret = read_packet(tok->gstd_fd, &in);
+		ret = read_packet(tok->gstd_fd, &in, 0);
 		if (ret <= 0)
 			return ret;
 
@@ -415,6 +417,30 @@ gstd_close(void *the_tok)
 	return 0;
 }
 
+static ssize_t
+timed_read(int fd, void *buf, size_t bytes, int timeout)
+{
+	struct pollfd		fds[1];
+	int			ret;
+
+	if (timeout > 0) {
+		fds[0].fd = fd;
+		fds[0].events = POLLIN;
+
+		ret = poll(fds, 1, timeout);
+
+		if (ret == -1)
+			return -1;
+
+		if (ret != 1) {
+			errno = ETIMEDOUT;
+			return -1;
+		}
+	}
+
+	return read(fd, buf, bytes);
+}
+
 /*
  * Returns:
  *	-2	Need to call again
@@ -424,7 +450,7 @@ gstd_close(void *the_tok)
  *	1       Data has been completely received
  */
 static int
-read_packet(int fd, gss_buffer_t buf)
+read_packet(int fd, gss_buffer_t buf, int timeout)
 {
 	int	  ret;
 
@@ -435,7 +461,8 @@ read_packet(int fd, gss_buffer_t buf)
 	static int		tmpbuf_pos = 0;
 
 	if (len_buf_pos < 4) {
-		ret = read(fd, &len_buf[len_buf_pos], 4 - len_buf_pos);
+		ret = timed_read(fd, &len_buf[len_buf_pos], 4 - len_buf_pos,
+		    timeout);
 
 		if (ret == -1) {
 			if (errno == EINTR || errno == EAGAIN)
@@ -485,7 +512,7 @@ read_packet(int fd, gss_buffer_t buf)
 		}
 	}
 
-	ret = read(fd, tmpbuf + tmpbuf_pos, len - tmpbuf_pos);
+	ret = timed_read(fd, tmpbuf + tmpbuf_pos, len - tmpbuf_pos, timeout);
 	if (ret == -1) {
 		if (errno == EINTR || errno == EAGAIN)
 			return -2;
