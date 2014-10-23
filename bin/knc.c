@@ -55,44 +55,58 @@ prefs_t prefs;
 
 /* BEGIN_DECLS */
 
-void sigchld_handler(int);
-void usage(const char *);
-int do_bind_addr(const char *, struct sockaddr_in *);
-int setup_listener(unsigned short int);
-int connect_host(const char *, const char *);
-int connect_host_dosrv(const char *, const char *);
-int connect_host_inner(const char *, const char *);
-int reap(void);
-int getport(const char *, const char *);
-int launch_program(work_t *, int, char **);
-int prep_inetd(void);
-int do_inetd(int, char **);
-int do_inetd_wait(int, char **);
-int do_listener_inet(int, char **);
-int do_listener(int, int, char **);
-int do_unix_socket(work_t *);
-int fork_and_do_unix_socket(work_t *, int);
-int do_client(int, char **);
-int send_creds(int, work_t *, const char *const, const char * const);
-int emit_key_value(work_t *, const char * const, const char * const);
-int putenv_knc_key_value(const char * const, const char * const);
-int do_work(work_t *, int, char **);
-int fork_and_do_work(work_t *, int, int, char **);
-int move_local_to_network_buffer(work_t *);
-int move_network_to_local_buffer(work_t *);
-void write_buffer_init(write_buffer_t *);
-void work_init(work_t *);
-void work_free(work_t *);
-int shutdown_or_close(int, int);
-int nonblocking_set(int);
-int nonblocking_clr(int);
+void	sigchld_handler(int);
+void	usage(const char *);
+int	do_bind_addr(const char *, struct sockaddr_in *);
+int	setup_listener(unsigned short int);
+int	connect_host(const char *, const char *);
+int	connect_host_dosrv(const char *, const char *);
+int	connect_host_inner(const char *, const char *);
+int	reap(void);
+int	getport(const char *, const char *);
+int	launch_program(work_t *, int, char **);
+int	prep_inetd(void);
+int	do_inetd(int, char **);
+int	do_inetd_wait(int, char **);
+int	do_listener_inet(int, char **);
+int	do_listener(int, int, char **);
+int	do_unix_socket(work_t *);
+int	fork_and_do_unix_socket(work_t *, int);
+int	do_client(int, char **);
+int	send_creds(int, work_t *, const char *const, const char * const);
+int	emit_key_value(work_t *, const char * const, const char * const);
+int	putenv_knc_key_value(const char * const, const char * const);
+int	do_work(work_t *, int, char **);
+int	fork_and_do_work(work_t *, int, int, char **);
+int	move_local_to_network_buffer(work_t *);
+int	move_network_to_local_buffer(work_t *);
+void	write_buffer_init(write_buffer_t *);
+void	work_init(work_t *);
+void	work_free(work_t *);
+int	shutdown_or_close(int, int);
+int	nonblocking_set(int);
+int	nonblocking_clr(int);
 /* END_DECLS */
 
+/*
+ * On linux, you have to prepend + to optstring to cause sane argument
+ * processing to occur.  We hardcode this here rather than rely on the
+ * user to set POSIXLY_CORRECT because for programs with a syntax that
+ * accepts another program which has arguments, the GNU convention is
+ * particularly stupid.
+ */
+#ifdef linux
+#define POS "+"
+#else
+#define POS
+#endif
 
 /* Look Ma, no threading */
 char _log_buff[2048];
 
-const char *vlog(const char *fmt, ...) {
+const char *
+vlog(const char *fmt, ...)
+{
 	va_list	ap;
 	va_start(ap, fmt);
 
@@ -102,13 +116,16 @@ const char *vlog(const char *fmt, ...) {
 }
 
 void
-sigchld_handler(int signum) {
+sigchld_handler(int signum)
+{
+
 	/* do_listener() will handle the actual reaping. */
 	return;
 }
 
 void
-log_reap_status(pid_t pid, int status) {
+log_reap_status(pid_t pid, int status)
+{
 	if (WIFSIGNALED(status)) {
 		LOG(LOG_WARNING, ("child pid %d killed by signal %d",
 				  (int)pid, WTERMSIG(status)));
@@ -122,7 +139,8 @@ log_reap_status(pid_t pid, int status) {
 }
 
 int
-reap() {
+reap(void)
+{
 	pid_t	pid;
 	int	status;
 	int	num_reaped = 0;
@@ -150,7 +168,8 @@ getport(const char *servnam, const char *proto)
 }
 
 int
-shutdown_or_close(int fd, int how) {
+shutdown_or_close(int fd, int how)
+{
 	int ret;
 
 	if ((ret = shutdown(fd, how)) == -1)
@@ -160,7 +179,8 @@ shutdown_or_close(int fd, int how) {
 }
 
 int
-sleep_reap() {
+sleep_reap(void)
+{
 	pid_t	pid;
 	int	status;
 
@@ -175,7 +195,8 @@ sleep_reap() {
 }
 
 char *
-xstrdup(const char *orig) {
+xstrdup(const char *orig)
+{
 	char *s = strdup(orig);
 	if (!s) {
 		fprintf(stderr, "%s\n", strerror(errno));
@@ -226,7 +247,9 @@ parse_opt(const char *prognam, const char *opt)
 }
 
 void
-usage(const char *progname) {
+usage(const char *progname)
+{
+
 	fprintf(stderr, "usage:\n");
 	fprintf(stderr, "  server: %s -l [opts] <port> "
 		"prog [args]\n", progname);
@@ -260,9 +283,9 @@ usage(const char *progname) {
 	fprintf(stderr, "\t-?\t\tthis usage\n");
 }
 
-
 int
-main(int argc, char **argv) {
+main(int argc, char **argv)
+{
 	int c;
 	int ret;
 
@@ -274,19 +297,6 @@ main(int argc, char **argv) {
 	prefs.progname = xstrdup(argv[0]);	/* facilitate stderr logs */
 	prefs.network_fd = -1;			/* wrap connection around
 						   existing socket */
-
-/*
- * On linux, you have to prepend + to optstring to cause sane argument
- * processing to occur.  We hardcode this here rather than rely on the
- * user to set POSIXLY_CORRECT because for programs with a syntax that
- * accepts another program which has arguments, the GNU convention is
- * particularly stupid.
- */
-#ifdef linux
-#define POS "+"
-#else
-#define POS
-#endif
 
 	/* process arguments */
 	while ((c = getopt(argc, argv, POS "linda:?fc:o:wM:N:P:S:T:")) != -1) {
@@ -471,7 +481,6 @@ main(int argc, char **argv) {
 	exit(!do_client(argc, argv + optind));
 }
 
-
 extern int h_errno;
 
 #if defined(MY_SOLARIS)
@@ -480,7 +489,10 @@ extern int h_errno;
 #	define my_hstrerror(e)	hstrerror((e))
 #endif
 
-const char *internal_hstrerror(int e) {
+const char *
+internal_hstrerror(int e)
+{
+
 	switch (e) {
 	case NETDB_INTERNAL:
 		return "Internal resolver library error";
@@ -497,10 +509,10 @@ const char *internal_hstrerror(int e) {
 	}
 }
 
-
 int
 connect_host(const char *domain, const char *service)
 {
+
 	/*
 	 * if getaddrinfo does not do SRV records, then we must
 	 * unfortunately special case them.  We use libroken for
@@ -581,10 +593,9 @@ connect_host_inner(const char *domain, const char *service)
 	return s;
 }
 
-
-
 int
-do_bind_addr(const char *s, struct sockaddr_in *sa) {
+do_bind_addr(const char *s, struct sockaddr_in *sa)
+{
 	struct hostent *h;
 
 	/*
@@ -625,9 +636,9 @@ do_bind_addr(const char *s, struct sockaddr_in *sa) {
 	return 0;
 }
 
-
 int
-setup_listener(unsigned short int port) {
+setup_listener(unsigned short int port)
+{
 	int	fd;
 	int	opt;
 
@@ -671,9 +682,10 @@ setup_listener(unsigned short int port) {
 	return fd;
 }
 
-
 int
-handshake(work_t *work) {
+handshake(work_t *work)
+{
+
 	if (prefs.is_listener) {
 		if ((work->context = gstd_accept(work->network_fd,
 					 &work->credentials,
@@ -696,9 +708,10 @@ handshake(work_t *work) {
 	return 0;
 }
 
-
 int
-move_network_to_local_buffer(work_t *work) {
+move_network_to_local_buffer(work_t *work)
+{
+
 	/* We should NOT be called if we've already buffered inbound data */
 	if (work->local_buffer.in_valid) {
 		LOG(LOG_ERR, ("local_buffer already has buffered inbound"
@@ -725,9 +738,10 @@ move_network_to_local_buffer(work_t *work) {
 	return work->local_buffer.in_len;
 }
 
-
 int
-move_local_to_network_buffer(work_t *work) {
+move_local_to_network_buffer(work_t *work)
+{
+
 	/* We should NOT be called if we've already buffered inbound data */
 	if (work->network_buffer.in_valid) {
 		LOG(LOG_ERR, ("network_buffer already has buffered inbound"
@@ -760,7 +774,8 @@ move_local_to_network_buffer(work_t *work) {
  *		-1	Unrecoverable error
  */
 int
-write_local_buffer(work_t *work) {
+write_local_buffer(work_t *work)
+{
 	int len;
 
 	if (!work->local_buffer.out_valid) {
@@ -842,7 +857,8 @@ write_local_buffer(work_t *work) {
  *		-1	Unrecoverable error
  */
 int
-write_network_buffer(work_t *work) {
+write_network_buffer(work_t *work)
+{
 	int		len;
 	unsigned long	packet_len;
 	gss_buffer_desc	in, out;
@@ -945,7 +961,8 @@ write_network_buffer(work_t *work) {
 #define MAX(a,b)	(((a) > (b)) ? (a) : (b))
 
 int
-move_data(work_t *work) {
+move_data(work_t *work)
+{
 	int		ret;
 	int		mret;
 	int		select_is_the_worst_api_ever;
@@ -1210,7 +1227,7 @@ move_data(work_t *work) {
 
 int
 send_creds(int local, work_t *work, const char *const key,
-	      const char *const value)
+	   const char *const value)
 {
 
 	if (local && !value)
@@ -1227,8 +1244,8 @@ send_creds(int local, work_t *work, const char *const key,
 
 int
 emit_key_value(work_t * work, const char * const key,
-	       const char * const value) {
-
+	       const char * const value)
+{
 
 	/*
 	 * There are characters which can cause this protocol to be
@@ -1263,7 +1280,8 @@ emit_key_value(work_t * work, const char * const key,
 }
 
 int
-putenv_knc_key_value(const char * const key, const char * const value) {
+putenv_knc_key_value(const char * const key, const char * const value)
+{
 	char *p;
 
 	if ((p = malloc(strlen(key) + 1 + strlen(value) + 5)) == NULL) {
@@ -1279,7 +1297,8 @@ putenv_knc_key_value(const char * const key, const char * const value) {
 }
 
 int
-do_work(work_t *work, int argc, char **argv) {
+do_work(work_t *work, int argc, char **argv)
+{
 	int		ret;
 	struct linger	l;
 	char		port_as_string[20];
@@ -1385,7 +1404,8 @@ do_work(work_t *work, int argc, char **argv) {
 }
 
 int
-launch_program(work_t *work, int argc, char **argv) {
+launch_program(work_t *work, int argc, char **argv)
+{
 	pid_t			pid;
 	int			prog_fds[2];
 	int			prog_err[2];
@@ -1457,7 +1477,8 @@ launch_program(work_t *work, int argc, char **argv) {
 }
 
 int
-fork_and_do_work(work_t *work, int listener, int argc, char **argv) {
+fork_and_do_work(work_t *work, int listener, int argc, char **argv)
+{
 	pid_t pid;
 
 	pid = fork();
@@ -1476,7 +1497,8 @@ fork_and_do_work(work_t *work, int listener, int argc, char **argv) {
 }
 
 int
-do_unix_socket(work_t *work) {
+do_unix_socket(work_t *work)
+{
 	int			fd;
 	int			ret;
 	struct sockaddr_un	pfun;
@@ -1523,7 +1545,8 @@ do_unix_socket(work_t *work) {
 }
 
 int
-fork_and_do_unix_socket(work_t *work, int listener) {
+fork_and_do_unix_socket(work_t *work, int listener)
+{
 	pid_t pid;
 
 	pid = fork();
@@ -1541,9 +1564,9 @@ fork_and_do_unix_socket(work_t *work, int listener) {
 	return 1;
 }
 
-
 int
-prep_inetd(void) {
+prep_inetd(void)
+{
 	int	net_fd;
 	int	fd;
 
@@ -1582,7 +1605,8 @@ prep_inetd(void) {
 }
 
 int
-do_inetd_wait(int argc, char **argv) {
+do_inetd_wait(int argc, char **argv)
+{
 	int	listener;
 
 	listener = prep_inetd();
@@ -1590,7 +1614,8 @@ do_inetd_wait(int argc, char **argv) {
 }
 
 int
-do_inetd(int argc, char **argv) {
+do_inetd(int argc, char **argv)
+{
 	work_t		work;
 	socklen_t	len;
 	int		fd;
@@ -1616,9 +1641,9 @@ do_inetd(int argc, char **argv) {
 	return ret;
 }
 
-
 int
-do_listener_inet(int argc, char **argv) {
+do_listener_inet(int argc, char **argv)
+{
 	uint16_t	port;
 	int		listener;
 
@@ -1633,9 +1658,9 @@ do_listener_inet(int argc, char **argv) {
 	return do_listener(listener, argc - 1, argv + 1);
 }
 
-
 int
-do_listener(int listener, int argc, char **argv) {
+do_listener(int listener, int argc, char **argv)
+{
 	uint16_t		port;
 	int			fd;
 	int			num_children = 0;
@@ -1752,7 +1777,8 @@ do_listener(int listener, int argc, char **argv) {
 }
 
 int
-do_client(int argc, char **argv) {
+do_client(int argc, char **argv)
+{
 	const char *		hostname;
 	int			port;
 	int			fd;
@@ -1822,9 +1848,10 @@ do_client(int argc, char **argv) {
 	return ret;
 }
 
-
 void
-work_init(work_t *work) {
+work_init(work_t *work)
+{
+
 	memset(work, 0, sizeof(work_t));
 
 	work->network_fd = -1;
@@ -1840,7 +1867,9 @@ work_init(work_t *work) {
 	} while(0)
 
 void
-work_free(work_t *work) {
+work_free(work_t *work)
+{
+
 	FREE_NOTNULL(credentials);
 
 	if (work->context != NULL)
@@ -1852,7 +1881,8 @@ work_free(work_t *work) {
 }
 
 int
-nonblocking_set(int fd) {
+nonblocking_set(int fd)
+{
 	long curflags;
 
 	/*
@@ -1880,7 +1910,8 @@ nonblocking_set(int fd) {
 }
 
 int
-nonblocking_clr(int fd) {
+nonblocking_clr(int fd)
+{
 	long curflags;
 
 	if ((curflags = fcntl(fd, F_GETFL)) < 0)
