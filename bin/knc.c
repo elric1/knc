@@ -1860,24 +1860,18 @@ work_init(work_t *work)
 	work->local_err = -1;
 }
 
-#define FREE_NOTNULL(x)				\
-	do {					\
-		if (work->x != NULL)		\
-			free(work->x);		\
-	} while(0)
-
 void
 work_free(work_t *work)
 {
 
-	FREE_NOTNULL(credentials);
+	free(work->credentials);
 
 	if (work->context != NULL)
 		gstd_close(work->context);
 
-	FREE_NOTNULL(service);
-	FREE_NOTNULL(hostname);
-	FREE_NOTNULL(sprinc);
+	free(work->service);
+	free(work->hostname);
+	free(work->sprinc);
 }
 
 int

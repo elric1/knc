@@ -95,8 +95,6 @@ static int	gstd_errstring(char **, int);
 		(x)->gstd_fd  = (z);					\
 	} while (0)
 
-#define FREE_NOTNULL(x)	if (x) free(x)
-
 static char *
 gstd_get_display_name(gss_name_t client)
 {
