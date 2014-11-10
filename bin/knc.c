@@ -287,8 +287,8 @@ usage(const char *progname)
 int
 main(int argc, char **argv)
 {
-	int c;
-	int ret;
+	int	c;
+	int	ret;
 
 	/* initialize preferences */
 	memset(&prefs, 0, sizeof(prefs));	/* not strictly necessary... */
@@ -532,11 +532,11 @@ connect_host(const char *domain, const char *service)
 int
 connect_host_dosrv(const char *domain, const char *service)
 {
-	struct	resource_record *rr;
-	struct	dns_reply *r;
-	char	portstr[PORTSTRLEN];
-	char	*qdomain;
-	int	fd;
+	struct resource_record	*rr;
+	struct dns_reply	*r;
+	char			 portstr[PORTSTRLEN];
+	char			*qdomain;
+	int			 fd;
 
 	asprintf(&qdomain, "_%s._tcp%s%s", service, *domain?".":"", domain);
 	LOG(LOG_DEBUG, ("connect_host_dosrv looking up %s", qdomain));
@@ -565,10 +565,12 @@ connect_host_dosrv(const char *domain, const char *service)
 int
 connect_host_inner(const char *domain, const char *service)
 {
-	struct	addrinfo ai, *res, *res0;
-	int	ret;
-	int	s = -1;
-	char	buf[256];
+	struct addrinfo	 ai;
+	struct addrinfo	*res;
+	struct addrinfo	*res0;
+	int		 ret;
+	int		 s = -1;
+	char		 buf[256];
 
 	LOG(LOG_DEBUG, ("connecting to (%s, %s)", service, domain));
 	if (!service) {
@@ -603,7 +605,7 @@ connect_host_inner(const char *domain, const char *service)
 int
 do_bind_addr(const char *s, struct sockaddr_in *sa)
 {
-	struct hostent *h;
+	struct hostent	*h;
 
 	/*
 	 * We first check if we've been given a dotted quad.  If this
@@ -783,7 +785,7 @@ move_local_to_network_buffer(work_t *work)
 int
 write_local_buffer(work_t *work)
 {
-	int len;
+	int	len;
 
 	if (!work->local_buffer.out_valid) {
 		if (!work->local_buffer.in_valid) {
@@ -866,10 +868,12 @@ write_local_buffer(work_t *work)
 int
 write_network_buffer(work_t *work)
 {
-	int		len;
-	unsigned long	packet_len;
-	gss_buffer_desc	in, out;
-	OM_uint32	maj, min;
+	int		 len;
+	unsigned long	 packet_len;
+	gss_buffer_desc	 in;
+	gss_buffer_desc	 out;
+	OM_uint32	 maj;
+	OM_uint32	 min;
 	struct gstd_tok	*tok = work->context;
 
 	if (!work->network_buffer.out_valid) {
@@ -1289,7 +1293,7 @@ emit_key_value(work_t * work, const char * const key,
 int
 putenv_knc_key_value(const char * const key, const char * const value)
 {
-	char *p;
+	char	*p;
 
 	if ((p = malloc(strlen(key) + 1 + strlen(value) + 5)) == NULL) {
 		LOG(LOG_ERR, ("malloc failure during putenv_knc_key_value"));
@@ -1486,7 +1490,7 @@ launch_program(work_t *work, int argc, char **argv)
 int
 fork_and_do_work(work_t *work, int listener, int argc, char **argv)
 {
-	pid_t pid;
+	pid_t	pid;
 
 	pid = fork();
 
@@ -1554,7 +1558,7 @@ do_unix_socket(work_t *work)
 int
 fork_and_do_unix_socket(work_t *work, int listener)
 {
-	pid_t pid;
+	pid_t	pid;
 
 	pid = fork();
 
@@ -1668,15 +1672,15 @@ do_listener_inet(int argc, char **argv)
 int
 do_listener(int listener, int argc, char **argv)
 {
-	uint16_t		port;
-	int			fd;
-	int			num_children = 0;
-	int			num_connections = 0;
-	time_t			endtime = 0;
-	socklen_t		client_len;
+	uint16_t		 port;
+	int			 fd;
+	int			 num_children = 0;
+	int			 num_connections = 0;
+	time_t			 endtime = 0;
+	socklen_t		 client_len;
 	work_t			*work;
-	struct sigaction	sa;
-	sigset_t		sigset;
+	struct sigaction	 sa;
+	sigset_t		 sigset;
 
 	/* Set up to handle SIGCHLD */
 	sigemptyset(&sigset);
@@ -1786,13 +1790,13 @@ do_listener(int listener, int argc, char **argv)
 int
 do_client(int argc, char **argv)
 {
-	char *			hostname;
-	char *			service;
-	char *			port;
-	int			fd;
-	int			ret;
-	work_t			work;
-	struct sockaddr_in	sa;
+	char			*hostname;
+	char			*service;
+	char			*port;
+	int			 fd;
+	int			 ret;
+	work_t			 work;
+	struct sockaddr_in	 sa;
 
 	memset(&sa, 0, sizeof(sa));
 	work_init(&work);
@@ -1899,7 +1903,7 @@ work_free(work_t *work)
 int
 nonblocking_set(int fd)
 {
-	long curflags;
+	long	curflags;
 
 	/*
 	 * XXXrcd: lame hack for me.  don't set non-blocking on terminals
@@ -1928,7 +1932,7 @@ nonblocking_set(int fd)
 int
 nonblocking_clr(int fd)
 {
-	long curflags;
+	long	curflags;
 
 	if ((curflags = fcntl(fd, F_GETFL)) < 0)
 		return -1;
