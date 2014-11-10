@@ -86,6 +86,7 @@ void	work_free(work_t *);
 int	shutdown_or_close(int, int);
 int	nonblocking_set(int);
 int	nonblocking_clr(int);
+
 /* END_DECLS */
 
 /*
@@ -1808,7 +1809,7 @@ do_client(int argc, char **argv)
 		    LOG(LOG_ERR, ("invalid service@host: %s", argv[0]));
 		    free(service);
 		    return 0;
-	    }
+	}
 
 	*hostname++ = '\0';
 
