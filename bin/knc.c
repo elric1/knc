@@ -441,8 +441,8 @@ main(int argc, char **argv)
 		} else {
 			/* !prefs.is_listener ==> client */
 			if (((prefs.network_fd != -1) && (argc != 1)) ||
-			    ((prefs.network_fd == -1) && (argc != 2) &&
-			     (argc != 3))) {
+			    ((prefs.network_fd == -1) && (argc != 1) &&
+			     (argc != 2) && (argc != 3))) {
 				usage(argv[0]);
 				exit(1);
 			}
@@ -567,8 +567,14 @@ connect_host_inner(const char *domain, const char *service)
 	struct	addrinfo ai, *res, *res0;
 	int	ret;
 	int	s = -1;
+	char	buf[256];
 
 	LOG(LOG_DEBUG, ("connecting to (%s, %s)", service, domain));
+	if (!service) {
+		LOG(LOG_ERR, ("Failed to provide port\n"));
+		return -1;
+	}
+
 	memset(&ai, 0x0, sizeof(ai));
 	ai.ai_socktype = SOCK_STREAM;
 	ret = getaddrinfo(domain, service, &ai, &res0);
@@ -1779,8 +1785,9 @@ do_listener(int listener, int argc, char **argv)
 int
 do_client(int argc, char **argv)
 {
-	const char *		hostname;
-	int			port;
+	char *			hostname;
+	char *			service;
+	char *			port;
 	int			fd;
 	int			ret;
 	work_t			work;
@@ -1789,13 +1796,27 @@ do_client(int argc, char **argv)
 	memset(&sa, 0, sizeof(sa));
 	work_init(&work);
 
+	service = strdup(argv[0]);
+	if (!service) {
+		LOG(LOG_ERR, ("do_client: strdup failed, %s",
+		    strerror(errno)));
+		return 0;
+	}
+
 	/* Pick out the hostname portion of service@host */
-	if ((hostname = (index(argv[0], '@'))) == NULL) {
+	if ((hostname = (index(service, '@'))) == NULL) {
 		    LOG(LOG_ERR, ("invalid service@host: %s", argv[0]));
+		    free(service);
 		    return 0;
 	    }
 
-	++hostname;
+	*hostname++ = '\0';
+
+	port = index(hostname, ':');
+	if (port)
+		*port++ = '\0';
+	if (argv[1])
+		port = argv[1];
 
 	if (prefs.sprinc)
 		work.sprinc = xstrdup(prefs.sprinc);
@@ -1811,10 +1832,10 @@ do_client(int argc, char **argv)
 		LOG(LOG_DEBUG, ("wrapping existing fd %d", prefs.network_fd));
 		work.network_fd = prefs.network_fd;
 	} else {
-		fd = connect_host(hostname, argv[1]);
+		fd = connect_host(hostname, port);
 
-		if (fd == 1)
-			exit(1);	/* XXXrcd: is this right? */
+		if (fd == -1)
+			exit(1);
 
 		work.network_fd = fd;
 	}
@@ -1833,8 +1854,8 @@ do_client(int argc, char **argv)
 	}
 
 	work.hostname = xstrdup(hostname);
-	work.service = (char *)calloc(1, hostname - argv[0]);
-	memcpy(work.service, argv[0], hostname - argv[0] - 1);
+	work.service = xstrdup(service);
+	free(service);
 
 	if (!handshake(&work)) {
 		work_free(&work);
