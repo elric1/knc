@@ -226,14 +226,13 @@ runserver(int fd)
 #else
 		{
 			char	*buf;
-			int	 ret;
 
 			buf = malloc(len);
 			if (!buf) {
 				perror("malloc");
 				exit(1);
 			}
-			ret = knc_fullread(ctx, buf, len);
+			knc_fullread(ctx, buf, len);
 			free(buf);
 		}
 #endif
