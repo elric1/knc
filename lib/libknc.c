@@ -90,6 +90,10 @@ struct stream_gc {
 	struct stream_gc	*next;
 };
 
+#define STREAM_BIT_ALLOC_UNIT	(64 * 1024)
+#define NUM_STREAM_BITS	31
+#define NUM_STREAM_BUFS	4
+
 struct stream {
 	struct stream_bit	*head;
 	struct stream_bit	*cur;
@@ -98,6 +102,11 @@ struct stream {
 	int			 collecting;	/* g/c is ongoing */
 	size_t			 bufpos;
 	size_t			 avail;
+	uint32_t		 bits_table;
+	uint32_t		 bufs_table;
+	struct stream_bit	 bits[NUM_STREAM_BITS];
+	char			 bufs[NUM_STREAM_BUFS]
+				     [STREAM_BIT_ALLOC_UNIT*2];
 };
 
 typedef struct stream_bit *stream_bit;
@@ -218,9 +227,13 @@ int debug = 0;
 static void	debug_printf(knc_ctx, const char *, ...)
     __attribute__((__format__(__printf__, 2, 3)));
 
-static void		destroy_stream(stream);
-static stream_bit	alloc_stream_bit(int, size_t);
-static size_t		append_stream_bit(stream, stream_bit);
+static void		 destroy_stream(stream);
+static stream_bit	 get_stream_bit(stream);
+static void		 put_stream_bit(stream, stream_bit);
+static void		*get_stream_buf(stream, size_t);
+static void		 put_stream_buf(stream, void *);
+static stream_bit	 alloc_stream_bit(stream, int, size_t);
+static size_t		 append_stream_bit(stream, stream_bit);
 
 static size_t	put_stream(stream, const void *, size_t);
 static size_t	put_stream_userbuf(stream, void *, size_t,
@@ -285,6 +298,74 @@ destroy_stream(stream s)
 	stream_garbage_collect(s);
 }
 
+static stream_bit
+get_stream_bit(stream s)
+{
+	stream_bit	ret;
+	size_t		idx;
+
+	idx = ffs(s->bits_table);
+	if (!idx)
+		return calloc(1, sizeof(*ret));
+
+	idx--;
+	s->bits_table &= ~(1 << idx);
+	ret = &s->bits[idx];
+	memset(ret, 0x0, sizeof(*ret));
+	return ret;
+}
+
+static void
+put_stream_bit(stream s, stream_bit bit)
+{
+	size_t	idx;
+
+	idx = bit - s->bits;
+	if (idx >= NUM_STREAM_BITS) {
+		free(bit);
+		return;
+	}
+
+	s->bits_table |= 1 << idx;
+}
+
+static void *
+get_stream_buf(stream s, size_t len)
+{
+	size_t	idx;
+
+	if (len > 2 * STREAM_BIT_ALLOC_UNIT)
+		return calloc(len, 1);
+
+	idx = ffs(s->bufs_table);
+	if (!idx)
+		return calloc(len, 1);
+
+	idx--;
+	s->bufs_table &= ~(1 << idx);
+	memset(&s->bufs[idx], 0x0, len);
+	return &s->bufs[idx];
+}
+
+static void
+put_stream_buf(stream s, void *buf)
+{
+	ptrdiff_t	d;
+	size_t		idx;
+
+	d = (char *)buf - (char *)s->bufs[0];
+	if (d < 0 || d > 2 * STREAM_BIT_ALLOC_UNIT * NUM_STREAM_BUFS) {
+		/* This isn't one of ours, free it. */
+		free(buf);
+		return;
+	}
+
+	idx = d / (2 * STREAM_BIT_ALLOC_UNIT);
+	assert(idx * 2 * STREAM_BIT_ALLOC_UNIT == (size_t) d);
+
+	s->bufs_table |= 1 << idx;
+}
+
 static size_t
 append_stream_bit(stream s, stream_bit b)
 {
@@ -308,32 +389,28 @@ append_stream_bit(stream s, stream_bit b)
 	return b->len;
 }
 
-#define STREAM_BIT_ALLOC_UNIT	(64 * 1024)
-
 static stream_bit
-alloc_stream_bit(int type, size_t len)
+alloc_stream_bit(stream s, int type, size_t len)
 {
 	stream_bit	 bit;
-	char		*tmpbuf;
 
 	len  = len / STREAM_BIT_ALLOC_UNIT + (len % STREAM_BIT_ALLOC_UNIT)?1:0;
 	len *= STREAM_BIT_ALLOC_UNIT;
 	len  = MIN((2 * STREAM_BIT_ALLOC_UNIT), len);
 
-	bit = calloc(1, sizeof(*bit));
+	bit = get_stream_bit(s);
 	if (!bit)
 		return NULL;
 
-	tmpbuf = calloc(len, 1);
-	if (!tmpbuf) {
-		free(bit);
-		return NULL;
-	}
-
 	bit->type	= type;
-	bit->buf	= tmpbuf;
+	bit->buf	= get_stream_buf(s, len);
 	bit->len	= 0;
 	bit->allocated	= len;
+
+	if (!bit->buf) {
+		put_stream_bit(s, bit);
+		return NULL;
+	}
 
 	return bit;
 }
@@ -368,7 +445,7 @@ put_stream_userbuf(stream s, void *buf, size_t len,
 {
 	stream_bit	bit;
 
-	bit = calloc(1, sizeof(*bit));
+	bit = get_stream_bit(s);
 	if (!bit)
 		/* XXXrcd: hmmm, maybe we should raise an error here? */
 		return 0;
@@ -474,7 +551,7 @@ put_stream_command(stream s, void *buf, size_t len)
 	 * XXXrcd: might be an idea to use a new alloc which doesn't
 	 *         try to make a buffer that we can grow into per se.
 	 */
-	tmp = alloc_stream_bit(STREAM_COMMAND, len);
+	tmp = alloc_stream_bit(s, STREAM_COMMAND, len);
 	if (!tmp)
 		return 0;
 
@@ -535,7 +612,7 @@ get_istream(stream s, void **buf, size_t len)
 		}
 	}
 
-	tmp = alloc_stream_bit(STREAM_BUFFER, len);
+	tmp = alloc_stream_bit(s, STREAM_BUFFER, len);
 	if (!tmp)
 		return 0;
 
@@ -808,9 +885,9 @@ stream_garbage_collect(stream s)
 		if (s->head->free)
 			s->head->free(s->head->buf, s->head->cookie);
 		else
-			free(s->head->buf);
+			put_stream_buf(s, s->head->buf);
 
-		free(s->head);
+		put_stream_bit(s, s->head);
 		s->head = tmpbit;
 	}
 
@@ -926,6 +1003,16 @@ knc_ctx_init(void)
 	ret->sendinbufsiz = 16384;
 	ret->sendmax      = 65536;
 	ret->gssmaxpacket = 8192;
+
+	ret->raw_recv.bits_table    = ((uint32_t)1 << NUM_STREAM_BITS) - 1;
+	ret->raw_send.bits_table    = ((uint32_t)1 << NUM_STREAM_BITS) - 1;
+	ret->cooked_recv.bits_table = ((uint32_t)1 << NUM_STREAM_BITS) - 1;
+	ret->cooked_send.bits_table = ((uint32_t)1 << NUM_STREAM_BITS) - 1;
+
+	ret->raw_recv.bufs_table    = ((uint32_t)1 << NUM_STREAM_BUFS) - 1;
+	ret->raw_send.bufs_table    = ((uint32_t)1 << NUM_STREAM_BUFS) - 1;
+	ret->cooked_recv.bufs_table = ((uint32_t)1 << NUM_STREAM_BUFS) - 1;
+	ret->cooked_send.bufs_table = ((uint32_t)1 << NUM_STREAM_BUFS) - 1;
 
 	return ret;
 }
