@@ -225,6 +225,7 @@ runserver(int fd)
 		}
 #else
 		{
+			size_t	 j;
 			char	*buf;
 
 			buf = malloc(len);
@@ -233,6 +234,13 @@ runserver(int fd)
 				exit(1);
 			}
 			knc_fullread(ctx, buf, len);
+
+			for (j=0; j < len; j++)
+				if (buf[j] != (char)(j & 0xff))
+					fprintf(stderr, "Validate fails: "
+					    "%zu: %d != %zu\n", j,
+					    buf[j], (j & 0xff));
+
 			free(buf);
 		}
 #endif
@@ -305,7 +313,7 @@ runclient(int fd, const char *hostservice)
 		}
 
 		for (j=0; j < len; j++)
-			buf[j] = j % 255;
+			buf[j] = j & 0xff;
 
 		knc_write(ctx, buf, len);
 
