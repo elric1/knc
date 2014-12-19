@@ -60,6 +60,18 @@
 #include "libknc.h"
 #include "private.h"
 
+#ifndef USE_STUB_GSS_WRAP 
+#define USE_STUB_GSS_WRAP 1
+#endif
+ 
+#if USE_STUB_GSS_WRAP
+/*
+ * This over-rides gss_{,unwrap} with functions that memcpy rather than
+ * perform crypto and is intended only for testing.
+ */
+#include "stubgsswrap.c"
+#endif
+
 struct stream_bit {
 	int			  type;
 #define	STREAM_BUFFER	0x1
