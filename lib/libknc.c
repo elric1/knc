@@ -61,7 +61,7 @@
 #include "private.h"
 
 #ifndef USE_STUB_GSS_WRAP 
-#define USE_STUB_GSS_WRAP 1
+#define USE_STUB_GSS_WRAP 0
 #endif
  
 #if USE_STUB_GSS_WRAP
