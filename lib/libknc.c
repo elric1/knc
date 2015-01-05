@@ -229,9 +229,9 @@ static void	debug_printf(knc_ctx, const char *, ...)
 
 static void		 destroy_stream(stream);
 static stream_bit	 get_stream_bit(stream);
-static void		 put_stream_bit(stream, stream_bit);
+static void		 rel_stream_bit(stream, stream_bit);
 static void		*get_stream_buf(stream, size_t);
-static void		 put_stream_buf(stream, void *);
+static void		 rel_stream_buf(stream, void *);
 static stream_bit	 alloc_stream_bit(stream, int, size_t);
 static size_t		 append_stream_bit(stream, stream_bit);
 
@@ -316,7 +316,7 @@ get_stream_bit(stream s)
 }
 
 static void
-put_stream_bit(stream s, stream_bit bit)
+rel_stream_bit(stream s, stream_bit bit)
 {
 	size_t	idx;
 
@@ -348,7 +348,7 @@ get_stream_buf(stream s, size_t len)
 }
 
 static void
-put_stream_buf(stream s, void *buf)
+rel_stream_buf(stream s, void *buf)
 {
 	ptrdiff_t	d;
 	size_t		idx;
@@ -408,7 +408,7 @@ alloc_stream_bit(stream s, int type, size_t len)
 	bit->allocated	= len;
 
 	if (!bit->buf) {
-		put_stream_bit(s, bit);
+		rel_stream_bit(s, bit);
 		return NULL;
 	}
 
@@ -885,9 +885,9 @@ stream_garbage_collect(stream s)
 		if (s->head->free)
 			s->head->free(s->head->buf, s->head->cookie);
 		else
-			put_stream_buf(s, s->head->buf);
+			rel_stream_buf(s, s->head->buf);
 
-		put_stream_bit(s, s->head);
+		rel_stream_bit(s, s->head);
 		s->head = tmpbit;
 	}
 
