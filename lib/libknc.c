@@ -432,6 +432,7 @@ put_stream(stream s, const void *buf, size_t len)
 		memcpy(newbuf, buf, ret);
 		stream_fill(s, ret);
 
+		buf    = ((const char *)buf) + ret;
 		len   -= ret;
 		total += ret;
 	}
