@@ -119,6 +119,14 @@ void		knc_set_debug_prefix(knc_ctx, const char *);
 
 /* Error handling */
 
+#define KNC_ERROR_GSS		0x1
+#define KNC_ERROR_PROTO		0x2
+#define KNC_ERROR_RST		0x3
+#define KNC_ERROR_PIPE		0x4
+#define KNC_ERROR_NOCTX		0x5
+#define KNC_ERROR_ENOMEM	0x6
+#define KNC_ERROR_GENERIC	0x7
+
 int		 knc_error(knc_ctx);
 const char	*knc_errstr(knc_ctx);
 

@@ -386,6 +386,17 @@ functions can be used to query the connexion state:
 .Bl -tag -width XXXX
 .It Fn knc_is_authenticated ctx
 returns true if the connexion has been established.
+.It Fn knc_error ctx
+returns false if there is no error.
+Otherwise, the error number is returned, the following values are
+defined:
+.Ar KNC_ERROR_ENOMEM ,
+.Ar KNC_ERROR_GENERIC ,
+.Ar KNC_ERROR_GSS ,
+.Ar KNC_ERROR_NOCTX ,
+.Ar KNC_ERROR_PIPE ,
+.Ar KNC_ERROR_PROTO , and
+.Ar KNC_ERROR_RST .
 .It Fn knc_get_client
 returns the client's name.  Do not release this function's return value.
 .It Fn knc_get_service

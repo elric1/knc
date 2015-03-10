@@ -5,7 +5,9 @@
 void	run_loop(knc_ctx);
 
 void	knc_enomem(knc_ctx);
-void	knc_generic_error(knc_ctx, const char *, ...)
+void	knc_generic_error(knc_ctx, int, const char *, ...)
+	    __attribute__((__format__(__printf__, 3, 4)));
+void	knc_proto_error(knc_ctx, const char *, ...)
 	    __attribute__((__format__(__printf__, 2, 3)));
 void	knc_syscall_error(knc_ctx, const char *, int);
 void	knc_gss_error(knc_ctx, OM_uint32, OM_uint32, const char *);

@@ -148,13 +148,6 @@ struct internal_knc_ctx {
 	int			 error;
 	int			 debug;
 	char			 debug_prefix[64];
-#define KNC_ERROR_GSS		0x1
-#define KNC_ERROR_PROTO		0x2
-#define KNC_ERROR_RST		0x3
-#define KNC_ERROR_PIPE		0x4
-#define KNC_ERROR_NOCTX		0x5
-#define KNC_ERROR_ENOMEM	0x6
-#define KNC_ERROR_GENERIC	0x7
 	char			*errstr;
 
 	size_t			 recvinbufsiz;	/* XXXrcd: low water? */
@@ -1543,7 +1536,7 @@ knc_state_session(knc_ctx ctx, void *buf, size_t len)
 	 */
 
 	if (!(ctx->open & OPEN_READ)) {
-		knc_generic_error(ctx, "Data after EOF");
+		knc_proto_error(ctx, "Data after EOF");
 		return -1;
 	}
 
@@ -1753,7 +1746,7 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 
 		cmd = command_match(ctx, &cmdseqno, &cmdbuf, &cmdbuflen);
 		if (!cmd) {
-			knc_generic_error(ctx, "Malformed command packet");
+			knc_proto_error(ctx, "Malformed command packet");
 			goto done;
 		}
 
@@ -2199,7 +2192,8 @@ connect_host(knc_ctx ctx, const char *domain, const char *service, int flags)
 	ai.ai_socktype = SOCK_STREAM;
 	ret = getaddrinfo(domain, service, &ai, &res0);
 	if (ret) {
-		knc_generic_error(ctx, "getaddrinfo: (%s,%s) %s", domain,
+		knc_generic_error(ctx, KNC_ERROR_GENERIC,
+		    "getaddrinfo: (%s,%s) %s", domain,
 		    service, gai_strerror(ret));
 		return -1;
 	}
@@ -2721,7 +2715,7 @@ knc_fill(knc_ctx ctx, int dir)
 		 *         packet for close.
 		 */
 		if (ctx->open & OPEN_READ) {
-			knc_generic_error(ctx, "Short input");
+			knc_proto_error(ctx, "Short input");
 			knc_garbage_collect(ctx);
 			return EIO;
 		}
@@ -2974,11 +2968,27 @@ knc_errstring(OM_uint32 maj_stat, OM_uint32 min_stat, const char *preamble)
 #define GENERIC_BUFSIZ	1024
 
 void
-knc_generic_error(knc_ctx ctx, const char *fmt, ...)
+knc_generic_error(knc_ctx ctx, int errtype, const char *fmt, ...)
 {
 	va_list ap;
 
-	ctx->error  = KNC_ERROR_GENERIC;
+	ctx->error  = errtype;
+	ctx->errstr = malloc(GENERIC_BUFSIZ);
+
+	if (!ctx->errstr)
+		return;
+
+	va_start(ap, fmt);
+	vsnprintf(ctx->errstr, GENERIC_BUFSIZ, fmt, ap);
+	va_end(ap);
+}
+
+void
+knc_proto_error(knc_ctx ctx, const char *fmt, ...)
+{
+	va_list ap;
+
+	ctx->error  = KNC_ERROR_PROTO;
 	ctx->errstr = malloc(GENERIC_BUFSIZ);
 
 	if (!ctx->errstr)
