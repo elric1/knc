@@ -2892,8 +2892,8 @@ knc_io_complete(knc_ctx ctx)
 
 /* XXXrcd: review this code against gssstdio.c! */
 
-static char *
-knc_errstring(OM_uint32 maj_stat, OM_uint32 min_stat, const char *preamble)
+char *
+knc_gss_errstring(OM_uint32 maj_stat, OM_uint32 min_stat, const char *preamble)
 {
 	gss_buffer_desc	 status;
 	OM_uint32	 new_stat;
@@ -3023,7 +3023,7 @@ knc_gss_error(knc_ctx ctx, OM_uint32 maj_stat, OM_uint32 min_stat,
 {
 
 	ctx->error = KNC_ERROR_GSS;
-	ctx->errstr = knc_errstring(maj_stat, min_stat, s);
+	ctx->errstr = knc_gss_errstring(maj_stat, min_stat, s);
 	if (!ctx->errstr)
 		ctx->errstr = strdup("Failed to construct GSS error");
 	KNCDEBUG((ctx, "knc_gss_error: %s\n", ctx->errstr));

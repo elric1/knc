@@ -178,6 +178,15 @@ size_t		knc_pending(knc_ctx, int);
 int		knc_need_input(knc_ctx, int);
 int		knc_can_output(knc_ctx, int);
 
+/*
+ * This is exported as a convenience to me: I like to not rewrite this
+ * everywhere.  Should probably convince the GSS people to have one of
+ * these...
+ */
+
+char *knc_gss_errstring(OM_uint32, OM_uint32, const char *);
+
+
 #ifdef __cplusplus
 }
 #endif
