@@ -78,7 +78,7 @@ extern char _log_buff[2048];
 
 static int	write_packet(int, gss_buffer_t);
 static ssize_t	timed_read(int, void *, size_t, int);
-static int	read_packet(int, gss_buffer_t, int);
+static int	read_packet(int, gss_buffer_t, int, int);
 static int	gstd_errstring(char **, int);
 
 #define SETUP_GSTD_TOK(x,y,z,w) do {					\
@@ -208,8 +208,9 @@ gstd_accept(int fd, char **display_creds, char **export_name, char **mech)
 	*export_name = NULL;
 	out.length = 0;
 	in.length = 0;
+	read_packet(fd, &in, 60000, 1);
 again:
-	while ((ret = read_packet(fd, &in, 60000)) == -2)
+	while ((ret = read_packet(fd, &in, 60000, 0)) == -2)
 		;
 
 	if (ret < 1)
@@ -296,7 +297,7 @@ again:
 
 	if (maj & GSS_S_CONTINUE_NEEDED) {
 		LOG(LOG_DEBUG, ("continuing gstd_initiate"));
-		while ((ret = read_packet(fd, &in, 0)) == -2)
+		while ((ret = read_packet(fd, &in, 0, 0)) == -2)
 			;
 
 		if (ret < 1) {
@@ -338,7 +339,7 @@ gstd_read(void *the_tok, char *buf, int length)
 		 * If we encounter a protocol botch or if the other side has
 		 * closed the connection, we return that fact here
 		 */
-		ret = read_packet(tok->gstd_fd, &in, 0);
+		ret = read_packet(tok->gstd_fd, &in, 0, 0);
 		if (ret <= 0)
 			return ret;
 
@@ -448,7 +449,7 @@ timed_read(int fd, void *buf, size_t bytes, int timeout)
  *	1       Data has been completely received
  */
 static int
-read_packet(int fd, gss_buffer_t buf, int timeout)
+read_packet(int fd, gss_buffer_t buf, int timeout, int first)
 {
 	int	  ret;
 
@@ -457,6 +458,11 @@ read_packet(int fd, gss_buffer_t buf, int timeout)
 	static int		len_buf_pos = 0;
 	static char *		tmpbuf = 0;
 	static int		tmpbuf_pos = 0;
+
+	if (first) {
+		len_buf_pos = 0;
+		return -2;
+	}
 
 	if (len_buf_pos < 4) {
 		ret = timed_read(fd, &len_buf[len_buf_pos], 4 - len_buf_pos,
