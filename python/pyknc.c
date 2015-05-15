@@ -14,7 +14,7 @@ static PyObject *KncException;
 void
 pyknc_delete(PyObject *ctx)
 {
-	struct knc_ctx *knc = PyCapsule_GetPointer(ctx, NULL);
+	knc_ctx	knc = PyCapsule_GetPointer(ctx, NULL);
 
 	if (ctx == NULL)
 		return;
@@ -25,10 +25,10 @@ pyknc_delete(PyObject *ctx)
 static PyObject *
 pyknc_connect(PyObject *self, PyObject *args)
 {
-	struct knc_ctx	*ctx;
-	char		*service;
-	char		*hostname
-	char		*port;
+	knc_ctx	 ctx;
+	char	*service;
+	char	*hostname;
+	char	*port;
 
 	if (!PyArg_ParseTuple(args, "sss", &service, &hostname, &port))
 		return NULL;
@@ -37,7 +37,7 @@ pyknc_connect(PyObject *self, PyObject *args)
 	knc_authenticate(ctx);
 
 	if (knc_error(ctx)) {
-		knc_ctx_destroy(knc);
+		knc_ctx_destroy(ctx);
 		PyErr_SetString(KncException, knc_errstr(ctx));
 		return NULL;
 	}
@@ -49,7 +49,7 @@ static PyObject *
 pyknc_write(PyObject *self, PyObject *args)
 {
 	PyObject	*knc;
-	struct knc_ctx	*ctx;
+	knc_ctx		 ctx;
 	char		*buffer;
 	Py_ssize_t	 buffer_len;
 	ssize_t		 nwrite;
@@ -76,7 +76,7 @@ pyknc_read(PyObject *self, PyObject *args)
 {
 	PyObject	*knc;
 	PyObject	*robj;
-	struct knc_ctx	*ctx;
+	knc_ctx		 ctx;
 	ssize_t		 nread;
 	char		*buf;
 	Py_ssize_t	 buffer_sz;
