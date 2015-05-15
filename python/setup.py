@@ -1,8 +1,10 @@
 from distutils.core import setup,Extension
 import os
 
-libdir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "lib"))
-incdir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "include"))
+projdir = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+libdir = os.path.join(projdir, "lib/.libs")
+incdir = os.path.join(projdir, "lib")
 
 setup(name='pyknc',
       version='.5',
