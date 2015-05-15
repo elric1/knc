@@ -14,106 +14,103 @@ static PyObject *KncException;
 void
 pyknc_delete(PyObject *ctx)
 {
-    struct knc_ctx *knc = PyCapsule_GetPointer(ctx, NULL);
-    if (ctx == NULL) {
-        return;
-    }
+	struct knc_ctx *knc = PyCapsule_GetPointer(ctx, NULL);
 
-    knc_ctx_destroy(knc);
+	if (ctx == NULL)
+		return;
+
+	knc_ctx_destroy(knc);
 }
 
 static PyObject *
 pyknc_connect(PyObject *self, PyObject *args)
 {
-    char *service, *hostname, *port;
-    struct knc_ctx *ctx;
+	struct knc_ctx	*ctx;
+	char		*service;
+	char		*hostname
+	char		*port;
 
-    if (!PyArg_ParseTuple(args, "sss", &service, &hostname, &port)) {
-        return NULL;
-    }
+	if (!PyArg_ParseTuple(args, "sss", &service, &hostname, &port))
+		return NULL;
 
-    ctx = knc_connect(NULL, hostname, service, port, 0);
-    knc_authenticate(ctx);
+	ctx = knc_connect(NULL, hostname, service, port, 0);
+	knc_authenticate(ctx);
 
-    if (knc_error(ctx)) {
-        knc_ctx_destroy(knc);
-        PyErr_SetString(KncException, knc_errstr(ctx));
-        return NULL;
-    }
+	if (knc_error(ctx)) {
+		knc_ctx_destroy(knc);
+		PyErr_SetString(KncException, knc_errstr(ctx));
+		return NULL;
+	}
 
-    return Py_BuildValue("O", PyCapsule_New(ctx, NULL, &pyknc_delete));
+	return Py_BuildValue("O", PyCapsule_New(ctx, NULL, &pyknc_delete));
 }
 
 static PyObject *
 pyknc_write(PyObject *self, PyObject *args)
 {
-    PyObject *knc;
-    struct knc_ctx *ctx;
-    char *buffer;
-    Py_ssize_t buffer_len;
-    ssize_t nwrite;
+	PyObject	*knc;
+	struct knc_ctx	*ctx;
+	char		*buffer;
+	Py_ssize_t	 buffer_len;
+	ssize_t		 nwrite;
 
-    if (!PyArg_ParseTuple(args, "Os#", &knc, &buffer, &buffer_len)) {
-        return NULL;
-    }
+	if (!PyArg_ParseTuple(args, "Os#", &knc, &buffer, &buffer_len))
+		return NULL;
 
-    ctx = PyCapsule_GetPointer(knc, NULL);
-    if (ctx == NULL) {
-        return NULL;
-    }
+	ctx = PyCapsule_GetPointer(knc, NULL);
+	if (ctx == NULL)
+		return NULL;
 
-    nwrite = knc_write(ctx, buffer, buffer_len);
+	nwrite = knc_write(ctx, buffer, buffer_len);
 
-    if (knc_error(ctx)) {
-        PyErr_SetString(KncException, knc_errstr(ctx));
-        return NULL;
-    }
+	if (knc_error(ctx)) {
+		PyErr_SetString(KncException, knc_errstr(ctx));
+		return NULL;
+	}
 
-    return PyLong_FromLong(nwrite);
+	return PyLong_FromLong(nwrite);
 }
 
 static PyObject *
 pyknc_read(PyObject *self, PyObject *args)
 {
-    PyObject *knc;
-    PyObject *robj;
-    struct knc_ctx *ctx;
-    ssize_t nread;
-    char * buf;
-    Py_ssize_t buffer_sz;
+	PyObject	*knc;
+	PyObject	*robj;
+	struct knc_ctx	*ctx;
+	ssize_t		 nread;
+	char		*buf;
+	Py_ssize_t	 buffer_sz;
 
-    if (!PyArg_ParseTuple(args, "Oi", &knc, &buffer_sz)) {
-        return NULL;
-    }
+	if (!PyArg_ParseTuple(args, "Oi", &knc, &buffer_sz))
+		return NULL;
 
-    ctx = PyCapsule_GetPointer(knc, NULL);
-    buf = malloc(buffer_sz);
-    if (buf == NULL) {
-        return PyErr_NoMemory();
-    }
+	ctx = PyCapsule_GetPointer(knc, NULL);
+	buf = malloc(buffer_sz);
+	if (buf == NULL)
+		return PyErr_NoMemory();
 
-    nread = knc_read(ctx, buf, buffer_sz);
+	nread = knc_read(ctx, buf, buffer_sz);
 
-    if (nread < 0) {
-        free(buf);
+	if (nread < 0) {
+		free(buf);
 
-        if (knc_error(ctx)) {
-            PyErr_SetString(KncException, knc_errstr(ctx));
-            return NULL;
-        }
+		if (knc_error(ctx)) {
+			PyErr_SetString(KncException, knc_errstr(ctx));
+			return NULL;
+		}
 
-        return PyErr_SetFromErrno(PyExc_OSError);
-    }
+		return PyErr_SetFromErrno(PyExc_OSError);
+	}
 
-    if (knc_error(ctx)) {
-        PyErr_SetString(KncException, knc_errstr(ctx));
-        free(buf);
-        return NULL;
-    }
+	if (knc_error(ctx)) {
+		PyErr_SetString(KncException, knc_errstr(ctx));
+		free(buf);
+		return NULL;
+	}
 
-    robj = PyString_FromStringAndSize(buf, nread);
-    free(buf);
-    return robj;
+	robj = PyString_FromStringAndSize(buf, nread);
+	free(buf);
+	return robj;
 }
 
 static PyMethodDef PyKncMethods[] = {
@@ -126,13 +123,14 @@ static PyMethodDef PyKncMethods[] = {
 PyMODINIT_FUNC
 initpyknc(void)
 {
-    PyObject *m;
-    m = Py_InitModule3("pyknc", PyKncMethods, "Python bindings for KNC simple interface");
-    if (m == NULL) {
-        return;
-    }
+	PyObject	*m;
 
-    KncException = PyErr_NewException("pyknc.KncException", NULL, NULL);
-    Py_INCREF(KncException);
-    PyModule_AddObject(m, "KncException", KncException);
+	m = Py_InitModule3("pyknc", PyKncMethods,
+	    "Python bindings for KNC simple interface");
+	if (m == NULL)
+		return;
+
+	KncException = PyErr_NewException("pyknc.KncException", NULL, NULL);
+	Py_INCREF(KncException);
+	PyModule_AddObject(m, "KncException", KncException);
 }
