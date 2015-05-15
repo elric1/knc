@@ -14,5 +14,3 @@ setup(name='pyknc',
 	    ],
 
 	)
-
-

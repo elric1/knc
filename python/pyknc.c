@@ -100,7 +100,7 @@ pyknc_read(PyObject *self, PyObject *args)
         if (knc_error(ctx)) {
             PyErr_SetString(KncException, knc_errstr(ctx));
             return NULL;
-        } 
+        }
 
         return PyErr_SetFromErrno(PyExc_OSError);
     }
@@ -136,4 +136,3 @@ initpyknc(void)
     Py_INCREF(KncException);
     PyModule_AddObject(m, "KncException", KncException);
 }
-
