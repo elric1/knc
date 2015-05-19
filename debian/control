@@ -2,9 +2,10 @@ Source: knc
 Section: unknown
 Priority: extra
 Maintainer: elric <elric@imrryr.org>
-Build-Depends: debhelper (>= 7), dh-autoreconf, libkrb5-dev
+Build-Depends: debhelper (>= 7), dh-autoreconf, libkrb5-dev, python, python2.7-dev
 Standards-Version: 3.8.3
 Homepage: http://oskt.secure-endpoints.com/knc
+X-Python-Version: 2.7
 
 Package: knc
 Architecture: any
@@ -34,3 +35,12 @@ Description: Kerberised NetCat
      .
      This is the development package, required for building programs
      using libknc.
+
+Package: python-libknc
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libknc (= ${binary:Version}), python2.7
+Description: Kerberised NetCat
+     The KNC protocol provides an 8-bit clean, mutually authenticated
+     Kerberised tunnel between two endpoints.
+     .
+     This is the python bindings.
