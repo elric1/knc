@@ -37,8 +37,8 @@ pyknc_connect(PyObject *self, PyObject *args)
 	knc_authenticate(ctx);
 
 	if (knc_error(ctx)) {
-		knc_ctx_destroy(ctx);
 		PyErr_SetString(KncException, knc_errstr(ctx));
+		knc_ctx_destroy(ctx);
 		return NULL;
 	}
 
@@ -81,7 +81,7 @@ pyknc_read(PyObject *self, PyObject *args)
 	char		*buf;
 	Py_ssize_t	 buffer_sz;
 
-	if (!PyArg_ParseTuple(args, "Oi", &knc, &buffer_sz))
+	if (!PyArg_ParseTuple(args, "On", &knc, &buffer_sz))
 		return NULL;
 
 	ctx = PyCapsule_GetPointer(knc, NULL);
