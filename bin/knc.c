@@ -1430,6 +1430,8 @@ launch_program(work_t *work, int argc, char **argv)
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, prog_err) < 0) {
 		LOG_ERRNO(LOG_ERR, ("socketpair for stderr failed"));
+		close(prog_fds[0]);
+		close(prog_fds[1]);
 		return 0;
 	}
 
@@ -1437,10 +1439,17 @@ launch_program(work_t *work, int argc, char **argv)
 
 	if (pid == -1) {
 		LOG_ERRNO(LOG_CRIT, ("unable to fork to launch program"));
+		close(prog_fds[0]);
+		close(prog_fds[1]);
+		close(prog_err[0]);
+		close(prog_err[1]);
 		return 0;
-	} else if (pid == 0) {
+	}
+
+	if (pid == 0) {
 		/* child */
 
+		close(work->network_fd);
 		close(prog_fds[0]);
 		close(prog_err[0]);
 		LOG(LOG_DEBUG, ("child process preparing to exec %s",
@@ -1448,18 +1457,27 @@ launch_program(work_t *work, int argc, char **argv)
 
 		if (dup2(prog_fds[1], STDIN_FILENO) < 0) {
 			LOG_ERRNO(LOG_ERR, ("STDIN_FILENO dup2 failed"));
+			close(prog_fds[1]);
+			close(prog_err[1]);
 			return 0;
 		}
 
 		if (dup2(prog_fds[1], STDOUT_FILENO) < 0) {
 			LOG_ERRNO(LOG_ERR, ("STDOUT_FILENO dup2 failed"));
+			close(prog_fds[1]);
+			close(prog_err[1]);
 			return 0;
 		}
 
+		close(prog_fds[1]);
+
 		if (dup2(prog_err[1], STDERR_FILENO) < 0) {
 			LOG_ERRNO(LOG_ERR, ("STDERR_FILENO dup2 failed"));
+			close(prog_err[1]);
 			return 0;
 		}
+
+		close(prog_err[1]);
 
 		/* Reset SIGPIPE */
 		sigemptyset(&sigset);
@@ -1477,14 +1495,15 @@ launch_program(work_t *work, int argc, char **argv)
 
 		LOG_ERRNO(LOG_ERR, ("exec of %s failed", argv[0]));
 		exit(1);
-	} else {
-		/* parent */
-
-		close(prog_fds[1]);
-		work->local_out = work->local_in = prog_fds[0];
-		work->local_err = prog_err[0];
-		return 1;
 	}
+
+	/* parent */
+
+	close(prog_fds[1]);
+	close(prog_err[1]);
+	work->local_out = work->local_in = prog_fds[0];
+	work->local_err = prog_err[0];
+	return 1;
 }
 
 int
