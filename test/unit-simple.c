@@ -59,6 +59,7 @@ void usage(void);
 /* Global variables */
 
 int debug = 0;
+int quiet = 0;
 
 void
 usage(void)
@@ -89,10 +90,13 @@ main(int argc, char **argv)
 	srandom(time(NULL));
  
         /* process arguments */
-	while ((c = getopt(argc, argv, POS "d")) != -1) {
+	while ((c = getopt(argc, argv, POS "dq")) != -1) {
 		switch (c) {
 		case 'd':
 			debug = 1;
+			break;
+		case 'q':
+			quiet = 1;
 			break;
 		default:
 			usage();
@@ -301,7 +305,9 @@ runclient(int fd, const char *hostservice)
 		offset = random() % 140000;
 		len    = random() %  70000;
 
-		fprintf(stderr, "C: Sending blob %d of len %u\n", i, len);
+		if (!quiet)
+			fprintf(stderr, "C: Sending blob %d of len %u\n",
+			    i, len);
 
 		knc_write(ctx, &byte, 1);
 		knc_write(ctx, &offset, 4);
