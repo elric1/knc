@@ -1410,6 +1410,7 @@ do_work(work_t *work, int argc, char **argv)
 	close(work->network_fd);
 	close(work->local_in);
 	close(work->local_out);
+	close(work->local_err);
 
 	return ret;
 }
