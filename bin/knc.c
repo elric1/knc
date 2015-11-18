@@ -1126,7 +1126,6 @@ move_data(work_t *work)
 					    sizeof(errbuf) - 1);
 				switch (mret) {
 				case 0:
-					LOG(LOG_ERR, ("EOF on stderr"));
 					/*FALLTHROUGH*/
 				case -1:
 					/* just close it on errors or EOF. */
