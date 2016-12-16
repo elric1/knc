@@ -981,7 +981,6 @@ move_data(work_t *work)
 	fd_set		wrset;
 	char		local_active = 1;
 	char		network_active = 1;
-	char		child_alive = 1;
 	char		shut_nread_lwrite = 0;
 	char		shut_nwrite_lread = 0;
 	struct timeval	tv;
@@ -1034,19 +1033,14 @@ move_data(work_t *work)
 		 * (it's possible we have no child, of course,
 		 * but then what would we be doing here?)
 		 *
-		 * So we check for dead children.  If we've got one
-		 * we set our special "child_alive" flag to 0.
-		 *
 		 * Once we've drained any communication coming *from*
 		 * the child (local_active == 0 *and*
 		 * work->network_buffer.out_valid == 0), then
 		 * those facts, in combination with with a dead child
 		 * means we should exit.
 		 */
-		if (reap() > 0) {
+		if (reap() > 0)
 			LOG(LOG_NOTICE, ("child died before EOF"));
-			child_alive = 0;
-		}
 
 		FD_ZERO(&rdset);
 		FD_ZERO(&wrset);
