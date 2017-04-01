@@ -542,6 +542,20 @@ in which case -1 is returned.
 will provide a pointer to the output buffer at the current location.
 The size of the output buffer is returned or -1 to indicate an error
 has occurred.
+.Sy NOTE:
+.Fn knc_get_obuf
+may return less than the requested length even if
+.Fn knc_avail
+reports that the bytes are available because
+.Nm
+maintains an internal list of buffers to reduce unnecessary copying.
+.Fn knc_get_obuf
+only returns a single pointer into a single buffer and the number of remaining
+bytes in that buffer.
+If this behaviour is undesireable, please use either
+.Fn knc_get_obufv ,
+or
+.Fn knc_get_obufc .
 .It Fn knc_get_obufv ctx dir maxcnt vec count
 will provide a
 .Pq Dv struct iovec
