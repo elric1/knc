@@ -129,14 +129,15 @@ sig_set(int signum, void (*f)(int), int cldstop)
 {
 	struct sigaction	 sa;
 	sigset_t		 sigset;
-	const char		*err;
+	const char		*err = NULL;
 	const char		*sig;
 
-	switch (f) {
-	case SIG_IGN:	err = "ignore";		break;
-	case SIG_DFL:	err = "reset";		break;
-	default:	err = "install";	break;
-	}
+	if (!err && f == SIG_IGN)
+		err = "ignore";
+	if (!err && f == SIG_DFL)
+		err = "reset";
+	if (!err)
+		err = "install";
 
 	switch (signum) {
 	case SIGCHLD:	sig = "SIGCHLD";	break;
