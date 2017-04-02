@@ -55,7 +55,7 @@ prefs_t prefs;
 
 /* BEGIN_DECLS */
 
-void	sigchld_handler(int);
+void	sig_handler(int);
 void	usage(const char *);
 int	do_bind_addr(const char *, struct sockaddr_in *);
 int	setup_listener(unsigned short int);
@@ -117,11 +117,40 @@ vlog(const char *fmt, ...)
 }
 
 void
-sigchld_handler(int signum)
+sig_handler(int signum)
 {
 
 	/* do_listener() will handle the actual reaping. */
 	return;
+}
+
+void
+sig_set(int signum, void (*f)(int), int cldstop)
+{
+	struct sigaction	 sa;
+	sigset_t		 sigset;
+	const char		*err;
+	const char		*sig;
+
+	switch (f) {
+	case SIG_IGN:	err = "ignore";		break;
+	case SIG_DFL:	err = "reset";		break;
+	default:	err = "install";	break;
+	}
+
+	switch (signum) {
+	case SIGCHLD:	sig = "SIGCHLD";	break;
+	case SIGPIPE:	sig = "SIGPIPE";	break;
+	default:	sig = "unknown";	break;
+	}
+
+	sigemptyset(&sigset);
+	sa.sa_handler = f;
+	sa.sa_mask = sigset;
+	sa.sa_flags = cldstop ? SA_NOCLDSTOP : 0;
+	if (sigaction(signum, &sa, NULL) < 0)
+		LOG_ERRNO(LOG_WARNING, ("failed to %s %s (%d)", err, sig,
+		    signum));
 }
 
 void
@@ -1411,11 +1440,9 @@ do_work(work_t *work, int argc, char **argv)
 int
 launch_program(work_t *work, int argc, char **argv)
 {
-	pid_t			pid;
-	int			prog_fds[2];
-	int			prog_err[2];
-	sigset_t		sigset;
-	struct sigaction	sa;
+	pid_t	pid;
+	int	prog_fds[2];
+	int	prog_err[2];
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, prog_fds) < 0) {
 		LOG_ERRNO(LOG_ERR, ("socketpair for stdin/stdout failed"));
@@ -1473,15 +1500,7 @@ launch_program(work_t *work, int argc, char **argv)
 
 		close(prog_err[1]);
 
-		/* Reset SIGPIPE */
-		sigemptyset(&sigset);
-		sa.sa_handler = SIG_DFL;
-		sa.sa_mask = sigset;
-		sa.sa_flags = 0;
-		if (sigaction(SIGPIPE, &sa, NULL) < 0) {
-			LOG_ERRNO(LOG_ERR, ("failed to reset SIGPIPE"));
-			return 0;
-		}
+		sig_set(SIGPIPE, SIG_DFL, 0);
 
 		execv(argv[0], argv);
 
@@ -1685,35 +1704,16 @@ do_listener_inet(int argc, char **argv)
 int
 do_listener(int listener, int argc, char **argv)
 {
-	uint16_t		 port;
-	int			 fd;
-	int			 num_children = 0;
-	int			 num_connections = 0;
-	time_t			 endtime = 0;
-	socklen_t		 client_len;
-	work_t			*work;
-	struct sigaction	 sa;
-	sigset_t		 sigset;
+	uint16_t	 port;
+	int		 fd;
+	int		 num_children = 0;
+	int		 num_connections = 0;
+	time_t		 endtime = 0;
+	socklen_t	 client_len;
+	work_t		*work;
 
-	/* Set up to handle SIGCHLD */
-	sigemptyset(&sigset);
-	sa.sa_handler = sigchld_handler;
-	sa.sa_mask = sigset;
-	sa.sa_flags = SA_NOCLDSTOP;
-	if (sigaction(SIGCHLD, &sa, NULL) < 0) {
-		LOG_ERRNO(LOG_ERR, ("failed to install SIGCHLD handler"));
-		return 0;
-	}
-
-	/* Ignore SIGPIPE */
-	sigemptyset(&sigset);
-	sa.sa_handler = SIG_IGN;
-	sa.sa_mask = sigset;
-	sa.sa_flags = 0;
-	if (sigaction(SIGPIPE, &sa, NULL) < 0) {
-		LOG_ERRNO(LOG_ERR, ("failed to ignore SIGPIPE"));
-		return 0;
-	}
+	sig_set(SIGCHLD, sig_handler, 1);
+	sig_set(SIGPIPE, SIG_IGN, 0);
 
 	if (prefs.max_time)
 		endtime = time(NULL) + prefs.max_time;
