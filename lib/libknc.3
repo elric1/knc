@@ -99,6 +99,10 @@
 .Fn knc_set_local_fd "knc_ctx ctx" "int fd"
 .Ft void
 .Fn knc_give_local_fd "knc_ctx ctx" "int fd"
+.Ft int
+.Fn knc_get_opt "knc_ctx ctx" "unsigned option"
+.Ft void
+.Fn knc_get_opt "knc_ctx ctx" "unsigned option" "int value"
 .Ss Starting the Connexion
 .Ft void
 .Fn knc_initiate "knc_ctx ctx"
@@ -109,6 +113,8 @@
 .Fn knc_authenticate "knc_ctx ctx"
 .Ft ssize_t
 .Fn knc_read "knc_ctx ctx" "void *buf" "size_t len"
+.Ft ssize_t
+.Fn knc_fullread "knc_ctx ctx" "void *buf" "size_t len"
 .Ft ssize_t
 .Fn knc_write "knc_ctx ctx" "const void *buf" "size_t len"
 .Ft int
@@ -369,6 +375,59 @@ and marks the file descriptors to be closed when the
 is destroyed.
 .El
 .Pp
+There are also various options that control the behaviour of a
+particular
+.Ar knc_ctx :
+.Bl -tag -width XXXX
+.It KNC_OPT_NOPRIVACY boolean
+packets emitted will have cryptographically ensured integrity but will
+not be encrypted.
+.It KNC_SOCK_NONBLOCK boolean
+the network socket will be set to non-blocking mode and 
+.Fn knc_read ,
+.Fn knc_fullread ,
+and
+.Fn knc_write
+will return -1 with errno EAGAIN if data is not available.
+.It KNC_SOCK_CLOEXEC boolean
+the network socket will be set to close-on-exec.
+.It KNC_OPT_SENDINBUFSIZ int
+sets the max buffer size for
+.Po KNC_DIR_SEND Pc .
+.Fn knc_need_input ctx KNC_DIR_SEND
+will return true if
+.Fn knc_pending ctx KNC_DIR_SEND
+is less than the buffer size.
+This is in turn used by
+.Fn knc_get_pollfds
+to determine which fds should be polled.
+And also by
+.Fn knc_write
+to determine if a
+.Fn knc_flush
+should be intiated.
+Keep in mind that
+.Fn knc_pending
+is an approximation of the number of bytes in the stream.
+.It KNC_OPT_RECVINBUFSIZ int
+sets the max buffer size for
+.Po KNC_DIR_RECV Pc .
+.Fn knc_need_input ctx KNC_DIR_RECV
+will return true if there are less than size provided number of
+plaintext bytes available to read.
+This is also used by
+.Fn knc_get_pollfds
+to determine which fds should be polled.
+.El
+.Pp
+These options are manipulated using the following two functions:
+.Bl -tag -width XXXX
+.It Fn knc_get_opt ctx opt
+returns the value of the specified option.
+.It Fn knc_set_opt ctx opt val
+sets the value of the specified option.
+.El
+.Pp
 When the necessary settings have been made, a call to either
 .Fn knc_initiate
 or
@@ -463,9 +522,27 @@ is designed to provide the same interface as
 .Xr read 2
 and as such it will return the number of bytes read, zero for EOF and
 -1 for errors.
+If the option
+.Ar KNC_SOCK_NONBLOCK
+is not set, then
 .Fn knc_read
-is always a blocking interface and so it will always return at least
-one byte but it will return as soon as there are bytes available.
+will always return at least one byte but it will return as soon as there are
+bytes available.
+If
+.Ar KNC_SOCK_NONBLOCK
+is set, then
+.Fn knc_read
+may return -1 with errno set to EAGAIN.
+.It Fn knc_fullread ctx buf len
+works just like
+.Fn knc_read ,
+except it will only return when the buffer is full or EOF is reached.
+If the option
+.Ar KNC_SOCK_NONBLOCK
+is set, then if
+.Fn knc_fullread ,
+a -1 will be returned with errno set to EAGAIN.
+.Xr read
 .It Fn knc_write ctx buf len
 will write data to the stream.
 .Fn knc_write
@@ -528,7 +605,7 @@ put the resultant buffer onto the input side of the desired stream,
 and
 .Xr munmap 2
 it when it has been consumed.
-.It knc_put_eof ctx dir
+.It Fn knc_put_eof ctx dir
 puts an EOF packet on the queue to be sent in the direction
 .Ar dir .
 .It Fn knc_get_ibuf ctx dir buf len
