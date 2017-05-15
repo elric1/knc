@@ -2251,6 +2251,18 @@ fdwritev(void *cookie, const struct iovec *iov, int iovcnt)
 #ifdef O_NOSIGPIPE
 	return writev(fd, iov, iovcnt);
 #else
+#ifdef MSG_NOSIGNAL
+        struct msghdr msg = { 0 };
+
+        msg.msg_name = NULL;
+        msg.msg_namelen = 0;
+        msg.msg_iov = (void *)(uintptr_t)iov;
+        msg.msg_iovlen = iovcnt;
+        msg.msg_control = NULL;
+        msg.msg_controllen = 0;
+        msg.msg_flags = 0;
+        return sendmsg(fd, &msg, MSG_NOSIGNAL);
+#else
 	struct timespec	ts_zero = {0, 0};
 	sigset_t	blocked;
 	sigset_t	pending;
@@ -2292,6 +2304,7 @@ fdwritev(void *cookie, const struct iovec *iov, int iovcnt)
 
 	errno = my_errno;
 	return ret;
+#endif
 #endif
 }
 
