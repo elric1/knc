@@ -2248,10 +2248,10 @@ fdwritev(void *cookie, const struct iovec *iov, int iovcnt)
 {
 	int		fd = ((struct fd_cookie *)cookie)->wfd;
 
-#ifdef O_NOSIGPIPE
-	return writev(fd, iov, iovcnt);
-#else
-#ifdef MSG_NOSIGNAL
+#if defined(O_NOSIGPIPE) || defined(MSG_NOSIGNAL)
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
         struct msghdr msg = { 0 };
 
         msg.msg_name = NULL;
@@ -2276,6 +2276,10 @@ fdwritev(void *cookie, const struct iovec *iov, int iovcnt)
 	 * outside our control.  Basically, check to see if there's
 	 * one pending, if not block SIGPIPE, do the writev(2),
 	 * consume any generated SIGPIPE, and restore the old sigmask.
+         *
+         * pthread_sigmask() is thread-safe, but sigismember() and
+         * sigtimedwait() are not.  We might end up consuming a SIGPIPE
+         * we shouldn't consume.
 	 */
 
 	sigemptyset(&blocked);
@@ -2304,7 +2308,6 @@ fdwritev(void *cookie, const struct iovec *iov, int iovcnt)
 
 	errno = my_errno;
 	return ret;
-#endif
 #endif
 }
 
