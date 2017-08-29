@@ -116,9 +116,19 @@ vlog(const char *fmt, ...)
 	return _log_buff;
 }
 
+int dienow = 0;
+
 void
 sig_handler(int signum)
 {
+
+	switch (signum) {
+	case SIGHUP:
+		dienow = 1;
+		break;
+	default:
+		break;
+	}
 
 	/* do_listener() will handle the actual reaping. */
 	return;
@@ -1713,6 +1723,7 @@ do_listener(int listener, int argc, char **argv)
 	socklen_t	 client_len;
 	work_t		*work;
 
+	sig_set(SIGHUP, sig_handler, 1);
 	sig_set(SIGCHLD, sig_handler, 1);
 	sig_set(SIGPIPE, SIG_IGN, 0);
 
@@ -1795,6 +1806,9 @@ do_listener(int listener, int argc, char **argv)
 			break;
 
 		if (endtime && time(NULL) > endtime)
+			break;
+
+		if (dienow)
 			break;
 	}
 
