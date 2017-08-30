@@ -10,17 +10,16 @@
 #export DH_VERBOSE=1
 
 %:
-	dh  $@ --with-python2 --with autoreconf
+	dh "$@" --with autoreconf
 
-override_dh_auto_build: build-python2.7
+override_dh_auto_configure:
+	dh_auto_configure --with-python2
+
+override_dh_auto_build:
 	dh_auto_build
+	cd python && python2.7 setup.py build
 
-override_dh_auto_install: install-python2.7
+override_dh_auto_install:
 	dh_auto_install
-
-build-python%:
-	cd python && python$* setup.py build
-
-install-python%:
 	cd python && python$* setup.py install --root=${CURDIR}/debian/tmp \
 					       --install-layout=deb
