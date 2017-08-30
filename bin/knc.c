@@ -1851,6 +1851,18 @@ do_client(int argc, char **argv)
 	if (argv[1])
 		port = argv[1];
 
+	/*
+	 * XXXrcd: for now, we default the port to be the service name,
+	 *         but later we should put this logic in the SRV RR
+	 *         handling code.  The idea will be: if the port isn't
+	 *         provided, then look for the SRV RRs failing back to
+	 *         use getaddrinfo(3) with service as the port.  If the
+	 *         port is provided, then avoid the SRV RR lookup.
+	 */
+
+	if (!port)
+		port = service;
+
 	if (prefs.sprinc)
 		work.sprinc = xstrdup(prefs.sprinc);
 
