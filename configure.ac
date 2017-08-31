@@ -27,9 +27,9 @@ AC_ARG_WITH([gss-dir],
 	    [gssdir=$withval],
 	    [gssdir=/usr])
 
-if test -d ${gssdir}; then
+if test -d ${gssdir} -a "$gssdir" != "/usr"; then
 	CPPFLAGS="$CPPFLAGS -I$gssdir/include"
-	LDFLAGS="$LDFLAGS -L$gssdir/lib"
+	LDFLAGS="$LDFLAGS -L$gssdir/lib -Wl,-rpath=$gssdir/lib"
 fi
 
 AC_CHECK_HEADERS([gssapi/gssapi_krb5.h gssapi/gssapi.h gssapi.h ], break,,)
