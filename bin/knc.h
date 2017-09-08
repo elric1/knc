@@ -26,6 +26,9 @@
 #ifndef _KNC_H_
 #define _KNC_H_
 
+#define MAXADDRSIZ	128
+#define MAXPORTSIZ	16
+
 /* Global app preferences */
 typedef struct prefs_s {
 	char *			progname;	/* argv[0] */
@@ -68,7 +71,9 @@ typedef struct write_buffer_s {
 typedef struct work_s {
 	/* The other side of our connection */
 	int			network_fd;
-	struct sockaddr_in	network_addr;
+	int			network_family;
+	char 			network_addr[MAXADDRSIZ];
+	char 			network_port[MAXPORTSIZ];
 
 	/* stdin/stdout of local side */
 	int			local_in;

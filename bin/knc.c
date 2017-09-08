@@ -86,6 +86,7 @@ void	work_free(work_t *);
 int	shutdown_or_close(int, int);
 int	nonblocking_set(int);
 int	nonblocking_clr(int);
+void	sockaddr_2str(work_t *, const struct sockaddr *, socklen_t);
 
 /* END_DECLS */
 
@@ -1340,12 +1341,30 @@ putenv_knc_key_value(const char * const key, const char * const value)
 	return 1;
 }
 
+void
+sockaddr_2str(work_t *work, const struct sockaddr *sa, socklen_t len)
+{
+	int	ret;
+
+	work->network_family = sa->sa_family;
+	ret = getnameinfo(sa, len,
+	    work->network_addr, sizeof(work->network_addr),
+	    work->network_port, sizeof(work->network_port),
+	    NI_NUMERICHOST | NI_NUMERICSERV);
+
+	if (ret) {
+		LOG(LOG_ERR, ("Error converting incoming address into "
+		    "a string: %s", gai_strerror(ret)));
+		work->network_addr[0] = '\0';
+		work->network_port[0] = '\0';
+	}
+}
+
 int
 do_work(work_t *work, int argc, char **argv)
 {
 	int		ret;
 	struct linger	l;
-	char		port_as_string[20];
 	int		local = 0;
 
 	/*
@@ -1394,16 +1413,6 @@ do_work(work_t *work, int argc, char **argv)
 	/* Now we have credentials */
 	LOG(LOG_DEBUG, ("[%s] authenticated", work->credentials));
 
-	/* convert port to a string */
-	if (snprintf(port_as_string, sizeof(port_as_string),
-		     "%d", ntohs(work->network_addr.sin_port)) >=
-	    (int)sizeof(port_as_string)) {
-		LOG(LOG_ERR, ("conversion overflow for port_as_string,"
-			      " value might be %d",
-			      ntohs(work->network_addr.sin_port)));
-		return 0;
-	}
-
 	local = !(prefs.sun_path == NULL);
 
 	/* send the credentials to our daemon side */
@@ -1412,9 +1421,12 @@ do_work(work_t *work, int argc, char **argv)
 	      (strcmp(work->mech, "krb5") != 0			||
 	       send_creds(local, work, "CREDS", work->credentials))	&&
 	      send_creds(local, work, "EXPORT_NAME", work->export_name)	&&
-	      send_creds(local, work, "REMOTE_IP",
-			 inet_ntoa(work->network_addr.sin_addr))	&&
-	      send_creds(local, work, "REMOTE_PORT", port_as_string)	&&
+	      (work->network_family != AF_INET			||
+	       send_creds(local, work, "REMOTE_IP", work->network_addr))&&
+	      (work->network_family != AF_INET6			||
+	       send_creds(local, work, "REMOTE_IP6", work->network_addr))&&
+	      send_creds(local, work, "REMOTE_ADDR", work->network_addr)&&
+	      send_creds(local, work, "REMOTE_PORT", work->network_port)&&
 	      send_creds(local, work, "VERSION", KNC_VERSION_STRING)	&&
 	      send_creds(local, work, "END", NULL))) {
 		LOG(LOG_ERR, ("Failed to propagate creds.  connection "
@@ -1670,11 +1682,12 @@ do_inetd_wait(int argc, char **argv)
 int
 do_inetd(int argc, char **argv)
 {
-	work_t		work;
-	socklen_t	len;
-	int		fd;
-	int		ret;
-
+	struct sockaddr_storage	ss;
+	work_t			work;
+	socklen_t               len;
+	int			fd;
+	int			ret;
+ 
 	work_init(&work);
 
 	work.network_fd = prep_inetd();
@@ -1682,8 +1695,13 @@ do_inetd(int argc, char **argv)
 		return 0;
 
 	/* Obtain the remote TCP info */
-	len = sizeof(work.network_addr);
-	getpeername(work.network_fd,(struct sockaddr*)&work.network_addr, &len);
+	len = sizeof(ss);
+	ret = getpeername(work.network_fd, (struct sockaddr *)&ss, &len);
+	if (ret == -1) {
+		LOG(LOG_ERR, ("getpeername: %s", strerror(errno)));
+	} else {
+		sockaddr_2str(&work, (struct sockaddr *)&ss, len);
+	}
 
 	if (prefs.sun_path != NULL)
 		ret = do_unix_socket(&work);
@@ -1715,13 +1733,14 @@ do_listener_inet(int argc, char **argv)
 int
 do_listener(int listener, int argc, char **argv)
 {
-	uint16_t	 port;
-	int		 fd;
-	int		 num_children = 0;
-	int		 num_connections = 0;
-	time_t		 endtime = 0;
-	socklen_t	 client_len;
-	work_t		*work;
+	struct sockaddr_storage	 sa;
+	uint16_t		 port;
+	int			 fd;
+	int			 num_children = 0;
+	int			 num_connections = 0;
+	time_t			 endtime = 0;
+	socklen_t		 client_len;
+	work_t			*work;
 
 	sig_set(SIGHUP, sig_handler, 1);
 	sig_set(SIGCHLD, sig_handler, 1);
@@ -1751,9 +1770,8 @@ do_listener(int listener, int argc, char **argv)
 
 		work_init(work);
 
-		client_len = sizeof(work->network_addr);
-		if ((fd = accept(listener,
-				 (struct sockaddr *)&(work->network_addr),
+		client_len = sizeof(sa);
+		if ((fd = accept(listener, (struct sockaddr *)&sa,
 				 &client_len)) < 0) {
 
 			if ((errno != EINTR) && (errno != EAGAIN))
@@ -1765,11 +1783,11 @@ do_listener(int listener, int argc, char **argv)
 			continue;
 		}
 
+		sockaddr_2str(work, (struct sockaddr *)&sa, client_len);
 		num_connections++;
 
-		LOG(LOG_INFO, ("Accepted connection from %s port %d",
-			       inet_ntoa(work->network_addr.sin_addr),
-			       ntohs(work->network_addr.sin_port)));
+		LOG(LOG_INFO, ("Accepted connection from %s port %s",
+			       work->network_addr, work->network_port));
 
 		work->network_fd = fd;
 
