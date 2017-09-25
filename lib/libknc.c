@@ -188,10 +188,18 @@ struct fd_cookie {
 
 /* mmm, macros. */
 
+#if __GNUC__ > 2
+#define __predict_true(exp)     __builtin_expect((exp) != 0, 1)
+#define __predict_false(exp)    __builtin_expect((exp) != 0, 0)
+#else
+#define __predict_true(exp)     (exp)
+#define __predict_false(exp)    (exp)
+#endif
+
 #define MAX_IOVCNT	32
 
 #define KNC_GSS_ERROR(_ctx, _maj, _min, _ret, _str) do {		\
-		if (GSS_ERROR((_maj))) {				\
+		if (__predict_false(GSS_ERROR((_maj)))) {		\
 			knc_gss_error((_ctx), (_maj), (_min), (_str));	\
 			return _ret;					\
 		}							\
@@ -203,17 +211,13 @@ struct fd_cookie {
 /* XXXrcd: eventually get rid of DEBUG() */
 int debug = 0;
 #define DEBUG(x) do {				\
-		if (debug) {			\
+		if (__predict_false(debug)) {	\
 			debug_printf x ;	\
 		}				\
 	} while (0/*CONSTCOND*/)
 #else
 #define DEBUG(x)
 #endif
-
-#define KNCDEBUG(x) do {		\
-		debug_printf x ;	\
-	} while (0/*CONSTCOND*/)
 
 /* Local function declarations */
 
@@ -259,11 +263,11 @@ static stream	knc_find_buf(knc_ctx, int, int);
 /* And, ta da: the code */
 
 static void
-debug_printf(knc_ctx ctx, const char *fmt, ...)
+knc_debugf(knc_ctx ctx, const char *fmt, ...)
 {
 	va_list ap;
 
-	if (ctx && !ctx->debug)
+	if (__predict_true(ctx && !ctx->debug))
 		return;
 
 #ifdef LOW_LEVEL_DEBUGGERY
@@ -1448,7 +1452,7 @@ knc_state_init(knc_ctx ctx, void *buf, size_t len)
 
 	out.length = 0;
 
-	KNCDEBUG((ctx, "knc_state_init: enter\n"));
+	knc_debugf(ctx, "knc_state_init: enter\n");
 	ctx->locally_initiated = 1;
 	maj = gss_init_sec_context(&min, ctx->cred, &ctx->gssctx,
 	    ctx->service, ctx->req_mech, ctx->req_flags, ctx->time_req,
@@ -1479,7 +1483,7 @@ knc_state_accept(knc_ctx ctx, void *buf, size_t len)
 	if (ctx->state != STATE_ACCEPT)
 		return -1;
 
-	KNCDEBUG((ctx, "knc_state_accept: enter\n"));
+	knc_debugf(ctx, "knc_state_accept: enter\n");
 
 	out.length = 0;
 
@@ -1515,7 +1519,7 @@ knc_state_session(knc_ctx ctx, void *buf, size_t len)
 
 	out.length = 0;
 
-	KNCDEBUG((ctx, "knc_state_session: enter\n"));
+	knc_debugf(ctx, "knc_state_session: enter\n");
 	maj = gss_unwrap(&min, ctx->gssctx, &in, &out, NULL, NULL);
 
 	if (maj != GSS_S_COMPLETE) {
@@ -1660,8 +1664,8 @@ command_match(knc_ctx ctx, uint32_t *cmdseqno, char **retbuf, uint32_t *retlen)
 	if (len < *retlen)
 		return NULL;
 
-	KNCDEBUG((ctx, "Received command \"%s\", seq=%u, \"%.*s\", len=%u\n",
-	    value, *cmdseqno, (int)*retlen, *retbuf, *retlen));
+	knc_debugf(ctx, "Received command \"%s\", seq=%u, \"%.*s\", len=%u\n",
+	    value, *cmdseqno, (int)*retlen, *retbuf, *retlen);
 
 	for (i=0; string_cmds[i].cmd; i++)
 		if (!strcmp(value, string_cmds[i].cmd))
@@ -1688,7 +1692,7 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 
 	out.length = 0;
 
-	KNCDEBUG((ctx, "knc_state_command: enter\n"));
+	knc_debugf(ctx, "knc_state_command: enter\n");
 	maj = gss_unwrap(&min, ctx->gssctx, &in, &out, NULL, NULL);
 
 	if (maj != GSS_S_COMPLETE) {
@@ -1712,7 +1716,7 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 	 */
 
 	if (out.length == 0) {
-		KNCDEBUG((ctx, "knc_state_command: received dual EOF\n"));
+		knc_debugf(ctx, "knc_state_command: received dual EOF\n");
 		/* XXXrcd: should check if we've sent EOF not if we're open */
 		if (ctx->open & OPEN_WRITE)
 			knc_put_eof(ctx, KNC_DIR_SEND);
@@ -1723,14 +1727,14 @@ knc_state_command(knc_ctx ctx, void *buf, size_t len)
 	}
 
 	if (out.length == 1 && *(char *)out.value == 0) {
-		KNCDEBUG((ctx, "knc_state_command: received read EOF\n"));
+		knc_debugf(ctx, "knc_state_command: received read EOF\n");
 		ctx->open &= ~OPEN_READ;
 		goto done;
 	}
 
 	if (out.length == 1 && *(char *)out.value == 1) {
 		/* XXXrcd: should check if we've sent EOF not if we're open */
-		KNCDEBUG((ctx, "knc_state_command: received write EOF\n"));
+		knc_debugf(ctx, "knc_state_command: received write EOF\n");
 		if (ctx->open & OPEN_WRITE)
 			knc_put_eof(ctx, KNC_DIR_SEND);
 		ctx->open &= ~OPEN_WRITE;
@@ -1768,7 +1772,7 @@ knc_state_process_in(knc_ctx ctx)
 	size_t	 len;
 	int	 ret;
 
-	KNCDEBUG((ctx, "knc_state_process_in: enter\n"));
+	knc_debugf(ctx, "knc_state_process_in: enter\n");
 
 	/*
 	 * We have two main flows in which we are interested, input
@@ -1782,7 +1786,7 @@ knc_state_process_in(knc_ctx ctx)
 	for (;;) {
 		len = read_packet(&ctx->raw_recv, &buf);
 
-		KNCDEBUG((ctx, "read_packet returned %zd\n", len));
+		knc_debugf(ctx, "read_packet returned %zd\n", len);
 
 		if (len < 1)	/* XXXrcd: How about 0? */
 			return 0;
@@ -1821,7 +1825,7 @@ knc_state_process_out(knc_ctx ctx)
 	size_t		 len;
 	void		*buf;
 
-	KNCDEBUG((ctx, "knc_state_process_out: enter\n"));
+	knc_debugf(ctx, "knc_state_process_out: enter\n");
 
 	/*
 	 * We only process our out buffer if we have established the
@@ -1870,7 +1874,7 @@ knc_state_process_out(knc_ctx ctx)
 
 	}
 
-	KNCDEBUG((ctx, "knc_state_process_out: leave\n"));
+	knc_debugf(ctx, "knc_state_process_out: leave\n");
 
 	return 0;
 }
@@ -1991,11 +1995,11 @@ knc_put_eof(knc_ctx ctx, int dir)
 	char	buf[1];
 
 	if (dir == KNC_DIR_SEND) {
-		KNCDEBUG((ctx, "putting command: send EOF\n"));
+		knc_debugf(ctx, "putting command: send EOF\n");
 		buf[0] = 0;
 		ctx->open &= ~OPEN_WRITE;
 	} else {
-		KNCDEBUG((ctx, "putting command: recv EOF\n"));
+		knc_debugf(ctx, "putting command: recv EOF\n");
 		buf[0] = 1;
 	}
 
@@ -2043,7 +2047,7 @@ knc_put_command(knc_ctx ctx, const char *cmd, uint32_t cmdseqno,
 
 	assert(tlen == len);
 
-	KNCDEBUG((ctx, "putting command: %s seq=%u\n", cmd, cmdseqno));
+	knc_debugf(ctx, "putting command: %s seq=%u\n", cmd, cmdseqno);
 
 	return put_stream_command(&ctx->raw_send, buf, len);
 }
@@ -2106,7 +2110,7 @@ knc_initiate(knc_ctx ctx)
 	/* XXXrcd: sanity! */
 
 #if 0	/* XXXrcd: this should go somewhere... */
-	KNCDEBUG((ctx, "going to get tickets for: %s\n", (char *)name.value));
+	knc_debugf(ctx, "going to get tickets for: %s\n", (char *)name.value);
 #endif
 
 	ctx->gssctx = GSS_C_NO_CONTEXT;
@@ -2186,7 +2190,7 @@ connect_host(knc_ctx ctx, const char *domain, const char *service, int flags)
 	int	ret;
 	int	s = -1;
 
-	KNCDEBUG((ctx, "connecting to (%s, %s)...\n", service, domain));
+	knc_debugf(ctx, "connecting to (%s, %s)...\n", service, domain);
 
 	memset(&ai, 0x0, sizeof(ai));
 	ai.ai_socktype = SOCK_STREAM;
@@ -2202,7 +2206,7 @@ connect_host(knc_ctx ctx, const char *domain, const char *service, int flags)
 		s = get_socket(res->ai_family, res->ai_socktype,
 		    res->ai_protocol, flags);
 		if (s == -1) {
-			KNCDEBUG((ctx, "connect: %s\n", strerror(errno)));
+			knc_debugf(ctx, "connect: %s\n", strerror(errno));
 			continue;
 		}
 		ret = connect(s, res->ai_addr, res->ai_addrlen);
@@ -2210,7 +2214,7 @@ connect_host(knc_ctx ctx, const char *domain, const char *service, int flags)
 			break;
 		close(s);
 		s = -1;
-		KNCDEBUG((ctx, "connect: %s\n", strerror(errno)));
+		knc_debugf(ctx, "connect: %s\n", strerror(errno));
 	}
 
 	if (s == -1)
@@ -2714,17 +2718,17 @@ knc_fill(knc_ctx ctx, int dir)
 		return ENOMEM;
 	}
 
-	KNCDEBUG((ctx, "knc_fill: about to read %zd bytes.\n", len));
+	knc_debugf(ctx, "knc_fill: about to read %zd bytes.\n", len);
 
 	ret = ourread(ourcookie, tmpbuf, (size_t)len);
 
 	if (ret == -1) {
-		KNCDEBUG((ctx, "read error: %s\n", strerror(errno)));
+		knc_debugf(ctx, "read error: %s\n", strerror(errno));
 		return errno_switch(ctx, errno, "reading");
 	}
 
 	if (ret == 0) {
-		KNCDEBUG((ctx, "knc_fill: got EOF\n"));
+		knc_debugf(ctx, "knc_fill: got EOF\n");
 		/*
 		 * XXXrcd: we may very well call this an error because
 		 *         we are supposed to see an appropriate command
@@ -2740,7 +2744,7 @@ knc_fill(knc_ctx ctx, int dir)
 	}
 
 	if (ret > 0) {
-		KNCDEBUG((ctx, "Read %zd bytes\n", ret));
+		knc_debugf(ctx, "Read %zd bytes\n", ret);
 		knc_fill_buf(ctx, dir, (size_t)ret);
 	}
 
@@ -2785,18 +2789,18 @@ knc_flush(knc_ctx ctx, int dir, size_t flushlen)
 		len = knc_get_obufv(ctx, dir, MAX_IOVCNT, &vec, &iovcnt);
 		if (len <= 0)
 			break;
-		KNCDEBUG((ctx, "knc_flush: about to write %zu bytes.\n", len));
+		knc_debugf(ctx, "knc_flush: about to write %zu bytes.\n", len);
 
 		len = ourwritev(ourcookie, vec, iovcnt);
 
 		if (len == -1) {
-			KNCDEBUG((ctx, "write error: %s\n", strerror(errno)));
+			knc_debugf(ctx, "write error: %s\n", strerror(errno));
 			return errno_switch(ctx, errno, "writev");
 		}
 
 		*total += len;
-		KNCDEBUG((ctx, "knc_flush: wrote %zd bytes, total=%zd\n",
-		    len, *total));
+		knc_debugf(ctx, "knc_flush: wrote %zd bytes, total=%zd\n",
+		    len, *total);
 		knc_drain_buf(ctx, dir, (size_t)len);
 
 		knc_garbage_collect(ctx);
@@ -3042,7 +3046,7 @@ knc_gss_error(knc_ctx ctx, OM_uint32 maj_stat, OM_uint32 min_stat,
 	ctx->errstr = knc_gss_errstring(maj_stat, min_stat, s);
 	if (!ctx->errstr)
 		ctx->errstr = strdup("Failed to construct GSS error");
-	KNCDEBUG((ctx, "knc_gss_error: %s\n", ctx->errstr));
+	knc_debugf(ctx, "knc_gss_error: %s\n", ctx->errstr);
 }
 
 void
