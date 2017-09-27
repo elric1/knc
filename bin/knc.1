@@ -96,6 +96,13 @@ listener (server) mode.
 set "inetd" mode.
 Implies
 .Fl l .
+If the supplied socket is listening, then
+.Nm
+will run as an inetd-style wait service
+.Pq Fl w ,
+otherwise
+.Nm
+will run as an inetd-style nowait service.
 .It Fl n
 do not use the resolver for any name look ups (no DNS mode).
 .It Fl d
@@ -128,6 +135,7 @@ set the ident of syslog messages instead of the default of argv[0].
 .It Fl w
 in server mode, start as an inetd wait service.
 That is, expect stdin to be a listening socket and process requests on it.
+.Nm
 .It Fl M Ar max
 in server mode, the maximum number of connexions to process before exiting.
 .It Fl N Ar fd

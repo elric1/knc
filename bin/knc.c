@@ -1708,8 +1708,23 @@ do_inetd_nowait(int argc, char **argv)
 int
 do_inetd(int argc, char **argv)
 {
+	socklen_t	len;
+	int		ret;
+	int		val;
 
 	if (prefs.is_wait_service)
+		return do_inetd_wait(argc, argv);
+
+	ret = getsockopt(prefs.network_fd == -1 ? 0 : prefs.network_fd,
+	    SOL_SOCKET, SO_ACCEPTCONN, &val, &len);
+	if (ret == -1) {
+		LOG(LOG_ERR, ("File descriptor %d is likely not a "
+		    "socket: %s\n", prefs.network_fd,
+		    strerror(errno)));
+		exit(1);
+	}
+
+	if (val)
 		return do_inetd_wait(argc, argv);
 
 	return do_inetd_nowait(argc, argv);
