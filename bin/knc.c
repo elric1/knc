@@ -438,14 +438,8 @@ main(int argc, char **argv)
 	else
 		openlog(prefs.progname, LOG_PID, LOG_DAEMON);
 
-	if (prefs.is_listener && prefs.network_fd != -1) {
-		LOG(LOG_ERR, ("specifying a file descriptor with -N "
-			      "makes sense for clients only\n"));
-		exit(1);
-	}
-
-	if (prefs.is_inetd && !prefs.is_listener)
-		prefs.is_listener = 1;
+	if (prefs.is_listener && prefs.network_fd != -1)
+		prefs.is_inetd = 1;
 
 	if (prefs.no_fork && !prefs.is_listener) {
 		LOG(LOG_ERR, ("-f only makes sense with -l\n"));
@@ -509,9 +503,6 @@ main(int argc, char **argv)
 	}
 
 	/* And now the meat of the app */
-	if (prefs.is_wait_service)
-		exit(!do_inetd_wait(argc, argv + optind));
-
 	if (prefs.is_inetd)
 		exit(!do_inetd(argc, argv + optind));
 
@@ -1631,11 +1622,14 @@ fork_and_do_unix_socket(work_t *work, int listener)
 int
 prep_inetd(void)
 {
-	int	net_fd;
+	int	net_fd = 0;
 	int	fd;
 
+	if (prefs.network_fd != -1)
+		net_fd = prefs.network_fd;
+
 	/* Move our network side to a higher fd */
-	if ((net_fd = dup(STDIN_FILENO)) < 0) {
+	if (net_fd > STDERR_FILENO || (net_fd = dup(STDIN_FILENO)) < 0) {
 		LOG_ERRNO(LOG_ERR, ("failed to dup stdin"));
 		return -1;
 	}
@@ -1678,7 +1672,7 @@ do_inetd_wait(int argc, char **argv)
 }
 
 int
-do_inetd(int argc, char **argv)
+do_inetd_nowait(int argc, char **argv)
 {
 	struct sockaddr_storage	ss;
 	work_t			work;
@@ -1709,6 +1703,16 @@ do_inetd(int argc, char **argv)
 	work_free(&work);
 
 	return ret;
+}
+
+int
+do_inetd(int argc, char **argv)
+{
+
+	if (prefs.is_wait_service)
+		return do_inetd_wait(argc, argv);
+
+	return do_inetd_nowait(argc, argv);
 }
 
 int

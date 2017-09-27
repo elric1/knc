@@ -136,6 +136,11 @@ use the supplied, pre-connected file descriptor
 .Ar fd \.
 The usual knc handshake
 will be performed over this file descriptor.
+In server mode,
+.Fl N
+implies
+.Fl i ,
+but will use the supplied file descriptor in preference to standard input.
 .It Fl P Ar sprinc
 in client mode, specify the Kerberos principal that we will use for the
 server.
