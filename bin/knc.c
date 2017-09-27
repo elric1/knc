@@ -444,10 +444,8 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	if (prefs.is_inetd && !prefs.is_listener) {
-		LOG(LOG_ERR, ("-i only makes sense with -l\n"));
-		exit(1);
-	}
+	if (prefs.is_inetd && !prefs.is_listener)
+		prefs.is_listener = 1;
 
 	if (prefs.no_fork && !prefs.is_listener) {
 		LOG(LOG_ERR, ("-f only makes sense with -l\n"));
