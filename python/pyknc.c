@@ -12,14 +12,18 @@ static PyObject *pyknc_read(PyObject *self, PyObject *args);
 static PyObject *KncException;
 
 void
-pyknc_delete(PyObject *ctx)
+pyknc_delete(PyObject *knc)
 {
-	knc_ctx	knc = PyCapsule_GetPointer(ctx, NULL);
+	knc_ctx	ctx;
 
-	if (ctx == NULL)
+	if (knc == NULL)
 		return;
 
-	knc_ctx_destroy(knc);
+	ctx = PyCapsule_GetPointer(knc, NULL);
+	if (ctx == NULL)
+		return NULL;
+
+	knc_ctx_destroy(ctx);
 }
 
 static PyObject *
@@ -42,7 +46,7 @@ pyknc_connect(PyObject *self, PyObject *args)
 		return NULL;
 	}
 
-	return Py_BuildValue("O", PyCapsule_New(ctx, NULL, &pyknc_delete));
+	return PyCapsule_New(ctx, NULL, &pyknc_delete);
 }
 
 static PyObject *
