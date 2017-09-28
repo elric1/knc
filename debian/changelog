@@ -1,9 +1,14 @@
 knc (1.11-1) unstable; urgency=low
 
+  * Fix a memory leak which provides a unauthentication DoS
+  * Add IPv6 address support for env vars and logs
+  * Automatically determine if we are a wait service
+  * Fix a memory leak in the python bindings
   * default port to the service name (so, ``knc service@host'' works)
   * Fix SIGHUP handling for ``knc -ifw'' to finish the current connexion
   * Don't log when launched program closes STDERR
   * Be more properly aggressive closing fds in the right places
+  * Clean up command line options
   * Code cleanup and documentation improvements
 
  -- Roland C. Dowdeswell <roland.dowdeswell@twosigma.com>  Wed, 30 Aug 2017 18:38:05 +0100
