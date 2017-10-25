@@ -1708,7 +1708,7 @@ do_inetd_nowait(int argc, char **argv)
 int
 do_inetd(int argc, char **argv)
 {
-	socklen_t	len;
+	socklen_t	len = sizeof(int);
 	int		ret;
 	int		val;
 
@@ -1717,14 +1717,8 @@ do_inetd(int argc, char **argv)
 
 	ret = getsockopt(prefs.network_fd == -1 ? 0 : prefs.network_fd,
 	    SOL_SOCKET, SO_ACCEPTCONN, &val, &len);
-	if (ret == -1) {
-		LOG(LOG_ERR, ("File descriptor %d is likely not a "
-		    "socket: %s\n", prefs.network_fd,
-		    strerror(errno)));
-		exit(1);
-	}
 
-	if (val)
+	if (ret != -1 && val)
 		return do_inetd_wait(argc, argv);
 
 	return do_inetd_nowait(argc, argv);
