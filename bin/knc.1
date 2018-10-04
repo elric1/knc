@@ -189,25 +189,39 @@ information over the socket to the server process.
 .Pp
 For launched executables, the current environment variables are defined:
 .Bl -tag -width "KNC_REMOTE_PORT" -offset indent
-.It Ev KNC_MECH
-Either "krb5" if the mechanism used was Kerberos or the hex-encoded form
-of the mechanism OID.
-Note: this can be blank if the GSS library doesn't supply the appropriate
-functions.
 .It Ev KNC_CREDS
 The display name of the remote counterparty.
 This is only set if the mechanism is Kerberos.
 .It Ev KNC_EXPORT_NAME
 The hex encoded export name of the remote counterparty.
+.It Ev KNC_MECH
+Either "krb5" if the mechanism used was Kerberos or the hex-encoded form
+of the mechanism OID.
+Note: this can be blank if the GSS library doesn't supply the appropriate
+functions.
+.It Ev KNC_REMOTE_ADDR
+This is deprecated.
+Please use either
+Ev KNC_REMOTE_IP ,
+or
+.Ev KNC_REMOTE_IP6 .
 .It Ev KNC_REMOTE_IP
 The IP address of the
 .Nm
-client program.  N.B.
+client program.
+N.B.
 .Em NO ENTITLEMENT DECISIONS
 should be based on the contents of this variable.  Further, it is only the
 "nearest" client to the server.  Remember that various other tunnels (including
 .Nm )
 may be between you and the actual user.
+.It Ev KNC_REMOTE_IP6
+The IPv6 address of the
+.Nm
+client program.
+Please see the notes in
+.Ev KNC_REMOTE_IP
+for caveats.
 .It Ev KNC_REMOTE_PORT
 The source port of the client.
 .It Ev KNC_VERSION
