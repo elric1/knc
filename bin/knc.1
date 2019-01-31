@@ -117,8 +117,9 @@ than launching a program.
 .It Fl f
 don't fork when in server mode (useful for debugging).
 .It Fl c
-in server mode, limit the maximum number of child processes to
+in server mode, limit the maximum number of concurrent child processes to
 .Ar num .
+This defaults to 128.
 .It Fl o Ar opt
 allows for the setting of options.
 Currently, the following options are implemented:

@@ -335,7 +335,7 @@ main(int argc, char **argv)
 	memset(&prefs, 0, sizeof(prefs));	/* not strictly necessary... */
 	prefs.use_dns = 1;
 	prefs.debug_level = LOG_ERR;		/* display LOG_ERR and worse */
-	prefs.num_children_max = 40;
+	prefs.num_children_max = 128;
 	prefs.progname = xstrdup(argv[0]);	/* facilitate stderr logs */
 	prefs.network_fd = -1;			/* wrap connection around
 						   existing socket */
