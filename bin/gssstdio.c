@@ -488,7 +488,7 @@ read_packet(int fd, gss_buffer_t buf, int timeout, int first)
 			 * Otherwise, we got EOF mid-length, and that's
 			 * a protocol error.
 			 */
-			LOG(LOG_INFO, ("EOF reading packet len"));
+			LOG(LOG_ERR, ("EOF reading packet len"));
 			goto bail;
 		}
 

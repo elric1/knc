@@ -1166,8 +1166,8 @@ move_data(work_t *work)
 			if (FD_ISSET(work->network_fd, &rdset)) {
 				mret = move_network_to_local_buffer(work);
 				if (mret == 0) {
-					LOG(LOG_INFO, ("EOF on network side."
-						    " Queueing shutdown"));
+					LOG(LOG_DEBUG, ("EOF on network side."
+						        " Queueing shutdown"));
 
 					shut_nread_lwrite = 1;
 
@@ -1185,9 +1185,9 @@ move_data(work_t *work)
 			if (FD_ISSET(work->local_in, &rdset)) {
 				mret = move_local_to_network_buffer(work);
 				if (mret == 0) {
-					LOG(LOG_INFO, ("EOF on local-side "
-						       "read. Queueing "
-						       "shutdown"));
+					LOG(LOG_DEBUG, ("EOF on local-side "
+						        "read. Queueing "
+						        "shutdown"));
 
 					shut_nwrite_lread = 1;
 
@@ -1215,9 +1215,9 @@ move_data(work_t *work)
 					return 0;
 				else if (mret == 0) {
 					/* Got EPIPE */
-					LOG(LOG_INFO, ("EPIPE on network-side "
-						       "write. Queueing "
-						       "shutdown"));
+					LOG(LOG_DEBUG, ("EPIPE on network-side "
+						        "write. Queueing "
+						        "shutdown"));
 					shut_nwrite_lread = 1;
 				}
 			}
@@ -1235,9 +1235,9 @@ move_data(work_t *work)
 					return 0;
 				else if (mret == 0) {
 					/* Got EPIPE */
-					LOG(LOG_INFO, ("EPIPE on local-side "
-						       "write. Queueing "
-						       "shutdown"));
+					LOG(LOG_DEBUG, ("EPIPE on local-side "
+						        "write. Queueing "
+						        "shutdown"));
 					shut_nread_lwrite = 1;
 				}
 			}
