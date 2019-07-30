@@ -1,3 +1,12 @@
+knc (1.12-1) unstable; urgency=low
+
+  * do a bit more logging by default...
+  * Change the default max kids to 128 and document it in knc.1
+  * Improve knc.1 to document all env vars that knc sets
+  * Fix auto-detection of accepting sockets in inetd-mode.
+
+ -- Roland C. Dowdeswell <roland.dowdeswell@twosigma.com>  Tue, 30 Jul 2019 18:38:05 +0100
+
 knc (1.11-1) unstable; urgency=low
 
   * Fix a memory leak which provides a unauthentication DoS
