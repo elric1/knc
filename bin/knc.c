@@ -106,6 +106,12 @@ void	sockaddr_2str(work_t *, const struct sockaddr *, socklen_t);
 /* Look Ma, no threading */
 char _log_buff[2048];
 
+/*
+ * global variables
+ */
+
+gss_OID global_mech = GSS_C_NO_OID;
+
 const char *
 vlog(const char *fmt, ...)
 {
@@ -341,7 +347,7 @@ main(int argc, char **argv)
 						   existing socket */
 
 	/* process arguments */
-	while ((c = getopt(argc, argv, POS "linda:?fc:o:wM:N:P:S:T:")) != -1) {
+	while ((c = getopt(argc, argv, POS "linda:?m:fc:o:wM:N:P:S:T:")) != -1) {
 		switch (c) {
 		case 'l':
 			prefs.is_listener = 1;
@@ -362,6 +368,14 @@ main(int argc, char **argv)
 				prefs.bindaddr = xstrdup(optarg);
 			} else {
 				LOG(LOG_ERR, ("-a requires an address\n"));
+				exit(1);
+			}
+			break;
+		case 'm':
+			global_mech = gss_name_to_oid(optarg);
+			if (!global_mech) {
+				fprintf(stderr, "Invalid mech \"%s\".\n", optarg);
+				usage(argv[0]);
 				exit(1);
 			}
 			break;

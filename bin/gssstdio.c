@@ -70,6 +70,7 @@
 #include <arpa/nameser.h>
 
 extern char _log_buff[2048];
+extern void *global_mech;
 
 #include "gssstdio.h"
 #include "knc.h"
@@ -153,7 +154,9 @@ gstd_get_export_name(gss_name_t client)
 	return ret;
 }
 
+#if 0
 #define KNC_KRB5_MECH_OID "\052\206\110\206\367\022\001\002\002"
+#endif
 
 static char *
 gstd_get_mech(gss_OID mech_oid)
@@ -168,6 +171,7 @@ gstd_get_mech(gss_OID mech_oid)
 	char		*ret;
 	size_t		i, k;
 
+#if 0
 	if (mech_oid->length == sizeof(KNC_KRB5_MECH_OID) - 1 &&
 	    memcmp(mech_oid->elements, KNC_KRB5_MECH_OID,
 		   sizeof(KNC_KRB5_MECH_OID) - 1) == 0) {
@@ -177,12 +181,13 @@ gstd_get_mech(gss_OID mech_oid)
 		}
 		return ret;
 	}
+#endif
 
 #ifdef HAVE_GSS_OID_TO_STR
 	maj = gss_oid_to_str(&min, mech_oid, &buf);
 	if (maj != GSS_S_COMPLETE) {
-		LOG(LOG_ERR, ("unable to display mechanism OID"));
-		return NULL;
+		/* unable to display mechanism OID */
+		return strdup("");
 	}
 	ret = strndup(buf.value, buf.length);
 #else
@@ -235,7 +240,7 @@ again:
 
 	*display_creds = gstd_get_display_name(client);
 	*export_name = gstd_get_export_name(client);
-	*mech = gstd_get_mech(mech_oid);
+	*mech = gstd_get_mech(global_mech);
 
 	gss_release_name(&min, &client);
 	SETUP_GSTD_TOK(tok, ctx, fd, "gstd_accept");
@@ -285,7 +290,7 @@ gstd_initiate(const char *hostname, const char *service, const char *princ,
 
 again:
 	maj = gss_init_sec_context(&min, GSS_C_NO_CREDENTIAL, &ctx, server,
-	    GSS_C_NO_OID, GSS_C_MUTUAL_FLAG | GSS_C_SEQUENCE_FLAG, 0,
+	    global_mech, GSS_C_MUTUAL_FLAG | GSS_C_SEQUENCE_FLAG, 0,
 	    GSS_C_NO_CHANNEL_BINDINGS, &in, NULL, &out, NULL, NULL);
 
 	if (out.length && write_packet(fd, &out))
