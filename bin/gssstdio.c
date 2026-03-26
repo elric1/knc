@@ -240,7 +240,7 @@ again:
 
 	*display_creds = gstd_get_display_name(client);
 	*export_name = gstd_get_export_name(client);
-	*mech = gstd_get_mech(global_mech);
+	*mech = gstd_get_mech(mech_oid);
 
 	gss_release_name(&min, &client);
 	SETUP_GSTD_TOK(tok, ctx, fd, "gstd_accept");
