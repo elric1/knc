@@ -184,12 +184,15 @@ gstd_get_mech(gss_OID mech_oid)
 #endif
 
 #ifdef HAVE_GSS_OID_TO_STR
+#if 0
 	maj = gss_oid_to_str(&min, mech_oid, &buf);
 	if (maj != GSS_S_COMPLETE) {
 		/* unable to display mechanism OID */
 		return strdup("");
 	}
-	ret = strndup(buf.value, buf.length);
+#else
+	ret = strdup(gss_oid_to_name(mech_oid));
+#endif
 #else
 	ret = strdup("");
 #endif
