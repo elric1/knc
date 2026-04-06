@@ -42,3 +42,4 @@ Makefile.in
 /test/testknc
 /test/unit
 /test/unit-simple
+.aider*

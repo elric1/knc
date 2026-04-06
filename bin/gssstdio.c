@@ -154,9 +154,7 @@ gstd_get_export_name(gss_name_t client)
 	return ret;
 }
 
-#if 0
 #define KNC_KRB5_MECH_OID "\052\206\110\206\367\022\001\002\002"
-#endif
 
 static char *
 gstd_get_mech(gss_OID mech_oid)
@@ -171,7 +169,6 @@ gstd_get_mech(gss_OID mech_oid)
 	char		*ret;
 	size_t		i, k;
 
-#if 0
 	if (mech_oid->length == sizeof(KNC_KRB5_MECH_OID) - 1 &&
 	    memcmp(mech_oid->elements, KNC_KRB5_MECH_OID,
 		   sizeof(KNC_KRB5_MECH_OID) - 1) == 0) {
@@ -181,7 +178,6 @@ gstd_get_mech(gss_OID mech_oid)
 		}
 		return ret;
 	}
-#endif
 
 #ifdef HAVE_GSS_OID_TO_STR
 #if 0
