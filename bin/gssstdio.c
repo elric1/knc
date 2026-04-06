@@ -289,7 +289,7 @@ gstd_initiate(const char *hostname, const char *service, const char *princ,
 
 again:
 	maj = gss_init_sec_context(&min, GSS_C_NO_CREDENTIAL, &ctx, server,
-	    global_mech, GSS_C_MUTUAL_FLAG | GSS_C_SEQUENCE_FLAG, 0,
+	    GSS_C_NO_OID, GSS_C_MUTUAL_FLAG | GSS_C_SEQUENCE_FLAG, 0,
 	    GSS_C_NO_CHANNEL_BINDINGS, &in, NULL, &out, NULL, NULL);
 
 	if (out.length && write_packet(fd, &out))
