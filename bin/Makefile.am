@@ -1,9 +1,10 @@
 # $Id$
 
-AM_CPPFLAGS = -DKNC_VERSION_STRING=\"1.12\"
+AM_CPPFLAGS = $(GSSAPI_CFLAGS) -DKNC_VERSION_STRING=\"1.12\"
 
 bin_PROGRAMS = knc
 
 knc_SOURCES = knc.c gssstdio.c
+knc_LDADD = $(GSSAPI_LIBS)
 
 man_MANS = knc.1

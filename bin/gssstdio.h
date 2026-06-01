@@ -76,6 +76,7 @@ int	 gstd_close(void *);
 
 void	*gstd_accept(int, char **, char **, char **);
 void	*gstd_initiate(const char *, const char *, const char *, int);
+gss_OID	 gstd_mech_from_name(const char *);
 
 void	 gstd_release_context(void *);
 

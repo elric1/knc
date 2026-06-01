@@ -62,6 +62,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <stdarg.h>
 #include <syslog.h>
 #include <unistd.h>
@@ -69,11 +70,11 @@
 /* this include must be before krb5/resolve.conf for things to work */
 #include <arpa/nameser.h>
 
-extern char _log_buff[2048];
-extern void *global_mech;
-
 #include "gssstdio.h"
 #include "knc.h"
+
+extern char _log_buff[2048];
+extern gss_OID global_mech;
 
 /* The rest of them are internal utility functions */
 
@@ -81,6 +82,8 @@ static int	write_packet(int, gss_buffer_t);
 static ssize_t	timed_read(int, void *, size_t, int);
 static int	read_packet(int, gss_buffer_t, int, int);
 static int	gstd_errstring(char **, int);
+static int	gstd_oid_equal(gss_OID, gss_OID);
+static char	*gstd_oid_to_hex(gss_OID);
 
 #define SETUP_GSTD_TOK(x,y,z,w) do {					\
 		(x) = malloc(sizeof(*(x)));				\
@@ -154,48 +157,98 @@ gstd_get_export_name(gss_name_t client)
 	return ret;
 }
 
-#if 0
 #define KNC_KRB5_MECH_OID "\052\206\110\206\367\022\001\002\002"
+
+static gss_OID_desc gstd_krb5_mech_oid = {
+	sizeof(KNC_KRB5_MECH_OID) - 1,
+	(void *)KNC_KRB5_MECH_OID
+};
+
+gss_OID
+gstd_mech_from_name(const char *name)
+{
+#ifdef HAVE_GSS_NAME_TO_OID
+	gss_OID oid;
 #endif
+
+	if (name == NULL || *name == '\0')
+		return GSS_C_NO_OID;
+
+#ifdef HAVE_GSS_NAME_TO_OID
+	oid = gss_name_to_oid(name);
+	if (oid != GSS_C_NO_OID)
+		return oid;
+#endif
+
+	if (strcasecmp(name, "krb5") == 0 ||
+	    strcasecmp(name, "kerberos") == 0 ||
+	    strcasecmp(name, "kerberos5") == 0)
+		return &gstd_krb5_mech_oid;
+
+	return GSS_C_NO_OID;
+}
+
+static int
+gstd_oid_equal(gss_OID a, gss_OID b)
+{
+
+	return a != GSS_C_NO_OID && b != GSS_C_NO_OID &&
+	    a->length == b->length &&
+	    memcmp(a->elements, b->elements, a->length) == 0;
+}
+
+static char *
+gstd_oid_to_hex(gss_OID oid)
+{
+	unsigned char	*bufp;
+	unsigned char	 nibble;
+	char		*ret;
+	size_t		 i, k;
+
+	if (oid == GSS_C_NO_OID || oid->elements == NULL)
+		return strdup("");
+
+	if ((ret = malloc(oid->length * 2 + 1)) == NULL) {
+		LOG(LOG_ERR, ("unable to malloc"));
+		return NULL;
+	}
+
+	for (bufp = oid->elements, i = 0, k = 0; i < oid->length; i++) {
+		nibble = bufp[i] >> 4;
+		ret[k++] = "0123456789ABCDEF"[nibble];
+		nibble = bufp[i] & 0x0f;
+		ret[k++] = "0123456789ABCDEF"[nibble];
+	}
+
+	ret[k] = '\0';
+	return ret;
+}
 
 static char *
 gstd_get_mech(gss_OID mech_oid)
 {
-#ifdef HAVE_GSS_OID_TO_STR
-	OM_uint32	maj;
-	OM_uint32	min;
-#endif
-	gss_buffer_desc	buf;
-	unsigned char   *bufp;
-	unsigned char   nibble;
 	char		*ret;
-	size_t		i, k;
 
-#if 0
-	if (mech_oid->length == sizeof(KNC_KRB5_MECH_OID) - 1 &&
-	    memcmp(mech_oid->elements, KNC_KRB5_MECH_OID,
-		   sizeof(KNC_KRB5_MECH_OID) - 1) == 0) {
-		if ((ret = strdup("krb5")) == NULL) {
+	if (gstd_oid_equal(mech_oid, &gstd_krb5_mech_oid)) {
+		ret = strdup("krb5");
+		if (!ret)
 			LOG(LOG_ERR, ("unable to malloc"));
-			return NULL;
-		}
 		return ret;
 	}
+
+#ifdef HAVE_GSS_OID_TO_NAME
+	{
+		const char *name = gss_oid_to_name(mech_oid);
+
+		if (name != NULL) {
+			ret = strdup(name);
+			if (ret != NULL)
+				return ret;
+		}
+	}
 #endif
 
-#ifdef HAVE_GSS_OID_TO_STR
-#if 0
-	maj = gss_oid_to_str(&min, mech_oid, &buf);
-	if (maj != GSS_S_COMPLETE) {
-		/* unable to display mechanism OID */
-		return strdup("");
-	}
-#else
-	ret = strdup(gss_oid_to_name(mech_oid));
-#endif
-#else
-	ret = strdup("");
-#endif
+	ret = gstd_oid_to_hex(mech_oid);
 	if (!ret)
 		LOG(LOG_ERR, ("unable to malloc"));
 	return ret;

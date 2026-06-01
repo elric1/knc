@@ -372,7 +372,7 @@ main(int argc, char **argv)
 			}
 			break;
 		case 'm':
-			global_mech = gss_name_to_oid(optarg);
+			global_mech = gstd_mech_from_name(optarg);
 			if (!global_mech) {
 				fprintf(stderr, "Invalid mech \"%s\".\n", optarg);
 				usage(argv[0]);
