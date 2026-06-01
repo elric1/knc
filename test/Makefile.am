@@ -4,3 +4,10 @@ AM_CPPFLAGS = -I$(top_srcdir)/lib $(WFLAGS) $(GSSAPI_CFLAGS)
 LDADD = ../lib/libknc.la
 
 bin_PROGRAMS = unit unit-simple testknc servefile
+
+EXTRA_DIST = knc-exec-tests.py
+KNC_EXEC_TEST_ARGS =
+
+.PHONY: check-knc-exec
+check-knc-exec:
+	python3 $(srcdir)/knc-exec-tests.py --knc $(top_builddir)/bin/knc $(KNC_EXEC_TEST_ARGS)

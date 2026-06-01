@@ -1,0 +1,720 @@
+#!/usr/bin/env python3
+#
+# Optional black-box tests for the knc executable.  These tests deliberately
+# require Heimdal's kimpersonate and a working local socket stack, so they are
+# not part of the default Automake check target.
+
+import argparse
+import base64
+import hashlib
+import json
+import os
+import select
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import textwrap
+import threading
+import time
+import unittest
+
+
+REALM = "KNC.TEST"
+CLIENT_PRINC = "client@%s" % REALM
+SERVER_PRINC = "host/127.0.0.1@%s" % REALM
+ENCTYPE = "aes256-cts-hmac-sha1-96"
+KNC_TIMEOUT = 20
+
+
+HELPER = r'''
+#!/usr/bin/env python3
+import base64
+import hashlib
+import json
+import os
+import sys
+import time
+
+
+def payload(size):
+    return bytes(((i * 31 + 7) & 0xff) for i in range(size))
+
+
+def read_all(delay=False):
+    chunks = []
+    while True:
+        data = os.read(0, 8192)
+        if not data:
+            break
+        chunks.append(data)
+        if delay:
+            time.sleep(0.002)
+    return b"".join(chunks)
+
+
+def read_exact(length):
+    chunks = []
+    remaining = length
+    while remaining > 0:
+        data = os.read(0, remaining)
+        if not data:
+            raise EOFError("short input")
+        chunks.append(data)
+        remaining -= len(data)
+    return b"".join(chunks)
+
+
+def write_all(data):
+    view = memoryview(data)
+    while view:
+        written = os.write(1, view)
+        view = view[written:]
+
+
+def write_json(path, obj):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, sort_keys=True)
+    os.rename(tmp, path)
+
+
+def write_bin(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.rename(tmp, path)
+
+
+def append_json_line(path, obj):
+    with open(path, "ab") as f:
+        f.write(json.dumps(obj, sort_keys=True).encode("utf-8"))
+        f.write(b"\n")
+
+
+def digest(data):
+    return {"len": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+
+scenario = sys.argv[1]
+side = sys.argv[2]
+
+if scenario == "env":
+    keys = [
+        "KNC_MECH",
+        "KNC_CREDS",
+        "KNC_EXPORT_NAME",
+        "KNC_REMOTE_ADDR",
+        "KNC_REMOTE_IP",
+        "KNC_REMOTE_IP6",
+        "KNC_REMOTE_PORT",
+        "KNC_VERSION",
+    ]
+    write_json(side, {k: os.environ.get(k) for k in keys})
+
+elif scenario == "stdin_binary":
+    write_bin(side, read_all())
+
+elif scenario == "stdout_binary":
+    data = payload(65537)
+    write_all(data)
+    write_json(side, digest(data))
+
+elif scenario == "request_response":
+    req1 = read_exact(5)
+    write_all(b"one:" + req1)
+    req2 = read_exact(4)
+    write_all(b"two:" + req2)
+    rest = read_all()
+    write_json(side, {"rest": base64.b64encode(rest).decode("ascii")})
+
+elif scenario == "client_half_close":
+    data = read_all()
+    status = "not-written"
+    try:
+        write_all(b"after-eof:" + data)
+        status = "written"
+    except BrokenPipeError:
+        status = "broken-pipe"
+    write_json(side, {"input": digest(data), "write_status": status})
+
+elif scenario == "drain_before_eof":
+    data = read_all(delay=True)
+    write_json(side, digest(data))
+
+elif scenario == "child_output_then_exit":
+    write_all(payload(1024 * 1024 + 333))
+
+elif scenario == "connection_marker":
+    data = read_all()
+    write_all(b"conn:" + data)
+    result = digest(data)
+    result["data"] = base64.b64encode(data).decode("ascii")
+    append_json_line(side, result)
+
+elif scenario == "stderr_not_tunneled":
+    stdout_marker = b"stdout-marker\n"
+    stderr_marker = b"stderr-marker\n"
+    write_all(stdout_marker)
+    os.write(2, stderr_marker)
+    write_json(side, {
+        "stdout": stdout_marker.decode("ascii"),
+        "stderr": stderr_marker.decode("ascii"),
+    })
+
+else:
+    raise SystemExit("unknown scenario: %s" % scenario)
+'''
+
+
+def deterministic_payload(size):
+    return bytes(((i * 31 + 7) & 0xff) for i in range(size))
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+class MissingTool(RuntimeError):
+    pass
+
+
+class KNCExecTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.knc = os.path.abspath(cls.knc_path)
+        cls.tmp = tempfile.TemporaryDirectory(prefix="knc-exec-tests.")
+        cls.tmpdir = cls.tmp.name
+        cls.helper = os.path.join(cls.tmpdir, "knc_exec_helper.py")
+        cls.keytab = os.path.join(cls.tmpdir, "server.keytab")
+        cls.ccache = os.path.join(cls.tmpdir, "client.ccache")
+        cls.krb5_conf = os.path.join(cls.tmpdir, "krb5.conf")
+
+        if not os.path.exists(cls.knc):
+            raise RuntimeError("knc executable not found: %s" % cls.knc)
+
+        cls.ktutil = shutil.which("ktutil")
+        cls.kimpersonate = shutil.which("kimpersonate")
+        if cls.ktutil is None:
+            raise MissingTool("ktutil not found")
+        if cls.kimpersonate is None:
+            raise MissingTool("kimpersonate not found")
+
+        with open(cls.helper, "w", encoding="utf-8") as f:
+            f.write(textwrap.dedent(HELPER))
+        os.chmod(cls.helper, 0o755)
+
+        with open(cls.krb5_conf, "w", encoding="utf-8") as f:
+            f.write(textwrap.dedent("""\
+                [libdefaults]
+                    default_realm = {realm}
+                    dns_lookup_kdc = false
+                    dns_lookup_realm = false
+                    rdns = false
+                    dns_canonicalize_hostname = false
+                    ticket_lifetime = 1h
+            """.format(realm=REALM)))
+
+        cls.run_checked([
+            cls.ktutil, "-k", cls.keytab, "add",
+            "--principal=%s" % SERVER_PRINC,
+            "--kvno=1",
+            "--enctype=%s" % ENCTYPE,
+            "--password=knc-exec-test-password",
+        ])
+        cls.run_checked([
+            cls.kimpersonate,
+            "--krb5",
+            "--client=%s" % CLIENT_PRINC,
+            "--server=%s" % SERVER_PRINC,
+            "--keytab=%s" % cls.keytab,
+            "--ccache=FILE:%s" % cls.ccache,
+            "--enc-type=%s" % ENCTYPE,
+            "--session-enc-type=%s" % ENCTYPE,
+        ])
+
+    @classmethod
+    def tearDownClass(cls):
+        tmp = getattr(cls, "tmp", None)
+        if tmp is not None:
+            tmp.cleanup()
+
+    @classmethod
+    def run_checked(cls, argv):
+        env = os.environ.copy()
+        env["KRB5_CONFIG"] = cls.krb5_conf
+        proc = subprocess.run(
+            argv,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                "%s failed with %d\nstdout:\n%s\nstderr:\n%s" %
+                (" ".join(argv), proc.returncode, proc.stdout, proc.stderr)
+            )
+
+    def side_path(self, name):
+        return os.path.join(self.tmpdir, name)
+
+    def read_json(self, path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def read_bin(self, path):
+        with open(path, "rb") as f:
+            return f.read()
+
+    def read_json_lines(self, path):
+        with open(path, "r", encoding="utf-8") as f:
+            return [json.loads(line) for line in f if line.strip()]
+
+    def server_env(self):
+        env = os.environ.copy()
+        env["KRB5_CONFIG"] = self.krb5_conf
+        env["KRB5_KTNAME"] = "FILE:%s" % self.keytab
+        return env
+
+    def client_env(self):
+        env = os.environ.copy()
+        env["KRB5_CONFIG"] = self.krb5_conf
+        env["KRB5CCNAME"] = "FILE:%s" % self.ccache
+        return env
+
+    def start_server(self, scenario, side, server_opts=(), max_connections=1,
+                     no_fork=True):
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+        listener.close()
+
+        argv = [
+            self.knc,
+            "-l",
+        ]
+        if no_fork:
+            argv.append("-f")
+        argv += [
+            "-M", str(max_connections),
+            "-a", "127.0.0.1",
+        ] + list(server_opts) + [
+            str(port),
+            sys.executable,
+            self.helper,
+            scenario,
+            side,
+        ]
+        proc = subprocess.Popen(
+            argv,
+            env=self.server_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        time.sleep(0.1)
+        if proc.poll() is not None:
+            stdout, stderr = proc.communicate()
+            self.fail(
+                "server failed to start\nstdout:\n%s\nstderr:\n%s" %
+                (stdout.decode("utf-8", "replace"),
+                 stderr.decode("utf-8", "replace"))
+            )
+        return proc, port
+
+    def start_unix_socket_server(self, unix_path, server_opts=()):
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+        listener.close()
+
+        argv = [
+            self.knc,
+            "-l",
+            "-f",
+            "-M", "1",
+            "-a", "127.0.0.1",
+            "-S", unix_path,
+        ] + list(server_opts) + [
+            str(port),
+        ]
+        proc = subprocess.Popen(
+            argv,
+            env=self.server_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        time.sleep(0.1)
+        if proc.poll() is not None:
+            stdout, stderr = proc.communicate()
+            self.fail(
+                "server failed to start\nstdout:\n%s\nstderr:\n%s" %
+                (stdout.decode("utf-8", "replace"),
+                 stderr.decode("utf-8", "replace"))
+            )
+        return proc, port
+
+    def client_argv(self, port, client_opts=()):
+        return [
+            self.knc,
+        ] + list(client_opts) + [
+            "host@127.0.0.1",
+            str(port),
+        ]
+
+    def finish_server(self, server):
+        try:
+            stdout, stderr = server.communicate(timeout=KNC_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            server.kill()
+            stdout, stderr = server.communicate()
+            self.fail("server timed out\nstdout:\n%s\nstderr:\n%s" %
+                      (stdout.decode("utf-8", "replace"),
+                       stderr.decode("utf-8", "replace")))
+        # The current listener path exits with 1 after a successful -M 1 run
+        # because do_listener() returns 0 and main negates that value.
+        self.assertIn(
+            server.returncode, (0, 1),
+            "server failed\nstdout:\n%s\nstderr:\n%s" %
+            (stdout.decode("utf-8", "replace"),
+             stderr.decode("utf-8", "replace"))
+        )
+        return stdout, stderr
+
+    def run_client(self, port, input_data=b"", client_opts=(), env=None,
+                   timeout=KNC_TIMEOUT):
+        if env is None:
+            env = self.client_env()
+        client = subprocess.Popen(
+            self.client_argv(port, client_opts),
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            cout, cerr = client.communicate(input_data, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            client.kill()
+            cout, cerr = client.communicate()
+            self.fail("client timed out\nstdout:\n%s\nstderr:\n%s" %
+                      (cout.decode("utf-8", "replace"),
+                       cerr.decode("utf-8", "replace")))
+        return client.returncode, cout, cerr
+
+    def run_session(self, scenario, input_data=b"", server_opts=(),
+                    client_opts=(), timeout=KNC_TIMEOUT):
+        side = self.side_path("%s.json" % scenario)
+        server, port = self.start_server(scenario, side, server_opts)
+        try:
+            returncode, cout, cerr = self.run_client(
+                port, input_data, client_opts, timeout=timeout)
+            self.assertEqual(
+                returncode, 0,
+                "client failed\nstdout:\n%s\nstderr:\n%s" %
+                (cout.decode("utf-8", "replace"),
+                 cerr.decode("utf-8", "replace"))
+            )
+            sout, serr = self.finish_server(server)
+            return side, cout, cerr, sout, serr
+        finally:
+            if server.poll() is None:
+                server.terminate()
+                try:
+                    server.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait()
+
+    def read_exact_from(self, fd, length, timeout=KNC_TIMEOUT):
+        chunks = []
+        remaining = length
+        deadline = time.time() + timeout
+        while remaining:
+            wait = deadline - time.time()
+            self.assertGreater(wait, 0, "timed out reading client stdout")
+            readable, _, _ = select.select([fd], [], [], wait)
+            self.assertTrue(readable, "timed out reading client stdout")
+            chunk = os.read(fd, remaining)
+            self.assertNotEqual(chunk, b"", "unexpected EOF")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
+
+    def run_interactive_request_response(self):
+        side = self.side_path("request_response.json")
+        server, port = self.start_server("request_response", side)
+        try:
+            client = subprocess.Popen(
+                self.client_argv(port),
+                env=self.client_env(),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            client.stdin.write(b"alpha")
+            client.stdin.flush()
+            first = self.read_exact_from(client.stdout.fileno(), len(b"one:alpha"))
+            client.stdin.write(b"beta")
+            client.stdin.close()
+            client.stdin = None
+            rest, cerr = client.communicate(timeout=KNC_TIMEOUT)
+            self.assertEqual(
+                client.returncode, 0,
+                "client failed\nstdout:\n%s\nstderr:\n%s" %
+                ((first + rest).decode("utf-8", "replace"),
+                 cerr.decode("utf-8", "replace"))
+            )
+            self.finish_server(server)
+            return side, first + rest
+        finally:
+            if server.poll() is None:
+                server.terminate()
+                try:
+                    server.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait()
+
+    def test_exec_env_is_populated(self):
+        side, out, _, _, _ = self.run_session("env")
+        self.assertEqual(out, b"")
+        env = self.read_json(side)
+        self.assertEqual(env["KNC_MECH"], "krb5")
+        self.assertTrue(env["KNC_CREDS"])
+        self.assertTrue(env["KNC_EXPORT_NAME"])
+        self.assertEqual(env["KNC_REMOTE_ADDR"], "127.0.0.1")
+        self.assertEqual(env["KNC_REMOTE_IP"], "127.0.0.1")
+        self.assertIsNone(env["KNC_REMOTE_IP6"])
+        self.assertTrue(env["KNC_REMOTE_PORT"])
+        self.assertTrue(env["KNC_VERSION"])
+
+    def test_exec_stdin_binary(self):
+        data = b"\x00knc stdin\x00" + deterministic_payload(100000)
+        side, out, _, _, _ = self.run_session("stdin_binary", data)
+        self.assertEqual(out, b"")
+        self.assertEqual(self.read_bin(side), data)
+
+    def test_exec_stdout_binary(self):
+        expected = deterministic_payload(65537)
+        side, out, _, _, _ = self.run_session("stdout_binary")
+        self.assertEqual(out, expected)
+        result = self.read_json(side)
+        self.assertEqual(result["len"], len(expected))
+        self.assertEqual(result["sha256"], sha256(expected))
+
+    def test_exec_request_response_before_close(self):
+        side, out = self.run_interactive_request_response()
+        self.assertEqual(out, b"one:alphatwo:beta")
+        self.assertEqual(self.read_json(side), {"rest": ""})
+
+    def test_exec_client_half_close_still_permits_child_response(self):
+        data = b"half-close request"
+        side, out, _, _, _ = self.run_session("client_half_close", data)
+        self.assertEqual(out, b"after-eof:" + data)
+        self.assertEqual(self.read_json(side)["write_status"], "written")
+
+    def test_exec_drains_network_input_before_child_eof(self):
+        data = deterministic_payload(1024 * 1024 + 17)
+        side, out, _, _, _ = self.run_session("drain_before_eof", data)
+        self.assertEqual(out, b"")
+        result = self.read_json(side)
+        self.assertEqual(result["len"], len(data))
+        self.assertEqual(result["sha256"], sha256(data))
+
+    def test_exec_child_output_then_exit_is_not_truncated(self):
+        expected = deterministic_payload(1024 * 1024 + 333)
+        _, out, _, _, _ = self.run_session("child_output_then_exit")
+        self.assertEqual(out, expected)
+
+    def test_exec_stderr_is_not_tunneled(self):
+        side, out, _, _, _ = self.run_session("stderr_not_tunneled")
+        self.assertEqual(out, b"stdout-marker\n")
+        self.assertEqual(self.read_json(side)["stderr"], "stderr-marker\n")
+
+    def test_no_half_close_drops_response_after_client_eof(self):
+        data = b"no-half-close request"
+        opts = ["-o", "no-half-close"]
+        side, out, _, _, _ = self.run_session(
+            "client_half_close", data, server_opts=opts, client_opts=opts)
+        self.assertEqual(out, b"")
+        self.assertIn(
+            self.read_json(side)["write_status"],
+            ["written", "broken-pipe"],
+        )
+
+    def test_auth_failure_does_not_exec_helper(self):
+        side = self.side_path("auth_failure.json")
+        server, port = self.start_server("env", side)
+        try:
+            env = self.client_env()
+            env["KRB5CCNAME"] = "FILE:%s" % self.side_path("missing.ccache")
+            returncode, out, err = self.run_client(port, env=env)
+            self.assertNotEqual(
+                returncode, 0,
+                "client unexpectedly succeeded\nstdout:\n%s\nstderr:\n%s" %
+                (out.decode("utf-8", "replace"),
+                 err.decode("utf-8", "replace"))
+            )
+            self.finish_server(server)
+            self.assertFalse(os.path.exists(side))
+        finally:
+            if server.poll() is None:
+                server.terminate()
+                try:
+                    server.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait()
+
+    def test_unix_socket_mode_sends_credential_prelude_then_data(self):
+        unix_path = self.side_path("knc.sock")
+        side = self.side_path("unix_socket.json")
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        listener.bind(unix_path)
+        listener.listen(1)
+        result = {}
+
+        def unix_worker():
+            try:
+                conn, _ = listener.accept()
+                with conn:
+                    buf = b""
+                    while b"END\n" not in buf:
+                        chunk = conn.recv(4096)
+                        if not chunk:
+                            raise EOFError("EOF before END")
+                        buf += chunk
+                    prelude, rest = buf.split(b"END\n", 1)
+                    data = [rest]
+                    while True:
+                        chunk = conn.recv(8192)
+                        if not chunk:
+                            break
+                        data.append(chunk)
+                    payload = b"".join(data)
+                    conn.sendall(b"unix-response:" + payload)
+                    result["prelude"] = prelude.decode("utf-8").splitlines()
+                    result["payload"] = base64.b64encode(payload).decode("ascii")
+            except BaseException as e:
+                result["error"] = repr(e)
+            finally:
+                listener.close()
+
+        thread = threading.Thread(target=unix_worker)
+        thread.start()
+        server, port = self.start_unix_socket_server(unix_path)
+        try:
+            payload = b"unix-socket request"
+            returncode, out, err = self.run_client(port, payload)
+            self.assertEqual(
+                returncode, 0,
+                "client failed\nstdout:\n%s\nstderr:\n%s" %
+                (out.decode("utf-8", "replace"),
+                 err.decode("utf-8", "replace"))
+            )
+            self.finish_server(server)
+            thread.join(KNC_TIMEOUT)
+            self.assertFalse(thread.is_alive())
+            self.assertNotIn("error", result)
+            self.assertEqual(out, b"unix-response:" + payload)
+            prelude = {}
+            for line in result["prelude"]:
+                key, value = line.split(":", 1)
+                prelude[key] = value
+            self.assertEqual(prelude["MECH"], "krb5")
+            self.assertTrue(prelude["CREDS"])
+            self.assertTrue(prelude["EXPORT_NAME"])
+            self.assertEqual(prelude["REMOTE_ADDR"], "127.0.0.1")
+            self.assertEqual(prelude["REMOTE_IP"], "127.0.0.1")
+            self.assertTrue(prelude["REMOTE_PORT"])
+            self.assertTrue(prelude["VERSION"])
+            self.assertEqual(
+                base64.b64decode(result["payload"].encode("ascii")),
+                payload,
+            )
+            with open(side, "w", encoding="utf-8") as f:
+                json.dump(result, f, sort_keys=True)
+        finally:
+            if server.poll() is None:
+                server.terminate()
+                try:
+                    server.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait()
+            thread.join(2)
+            listener.close()
+
+    def test_listener_processes_two_forked_exec_connections(self):
+        side = self.side_path("connection_markers.jsonl")
+        server, port = self.start_server(
+            "connection_marker", side, max_connections=2, no_fork=False)
+        try:
+            rc1, out1, err1 = self.run_client(port, b"first")
+            rc2, out2, err2 = self.run_client(port, b"second")
+            self.assertEqual(
+                rc1, 0,
+                "first client failed\nstdout:\n%s\nstderr:\n%s" %
+                (out1.decode("utf-8", "replace"),
+                 err1.decode("utf-8", "replace"))
+            )
+            self.assertEqual(
+                rc2, 0,
+                "second client failed\nstdout:\n%s\nstderr:\n%s" %
+                (out2.decode("utf-8", "replace"),
+                 err2.decode("utf-8", "replace"))
+            )
+            self.assertEqual(out1, b"conn:first")
+            self.assertEqual(out2, b"conn:second")
+            self.finish_server(server)
+            seen = sorted(
+                base64.b64decode(record["data"].encode("ascii"))
+                for record in self.read_json_lines(side)
+            )
+            self.assertEqual(seen, [b"first", b"second"])
+        finally:
+            if server.poll() is None:
+                server.terminate()
+                try:
+                    server.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--knc", default=os.path.join("bin", "knc"),
+                        help="path to the knc executable")
+    args, unittest_args = parser.parse_known_args()
+
+    KNCExecTests.knc_path = args.knc
+    missing = [tool for tool in ("ktutil", "kimpersonate")
+               if shutil.which(tool) is None]
+    if missing:
+        print("missing optional test dependencies: %s" %
+              ", ".join(missing), file=sys.stderr)
+        return 1
+
+    if unittest_args:
+        suite = unittest.defaultTestLoader.loadTestsFromNames(
+            unittest_args, module=sys.modules[__name__])
+    else:
+        suite = unittest.defaultTestLoader.loadTestsFromTestCase(KNCExecTests)
+    runner = unittest.TextTestRunner(verbosity=2)
+    try:
+        result = runner.run(suite)
+    except MissingTool as e:
+        print("missing optional test dependency: %s" % e, file=sys.stderr)
+        return 77
+    return 0 if result.wasSuccessful() else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
