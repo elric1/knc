@@ -1467,18 +1467,28 @@ int
 launch_program(work_t *work, int argc, char **argv)
 {
 	pid_t	pid;
-	int	prog_fds[2];
+	int	stdin_fds[2];
+	int	stdout_fds[2];
 	int	prog_err[2];
 
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, prog_fds) < 0) {
-		LOG_ERRNO(LOG_ERR, ("socketpair for stdin/stdout failed"));
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, stdin_fds) < 0) {
+		LOG_ERRNO(LOG_ERR, ("socketpair for stdin failed"));
+		return 0;
+	}
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, stdout_fds) < 0) {
+		LOG_ERRNO(LOG_ERR, ("socketpair for stdout failed"));
+		close(stdin_fds[0]);
+		close(stdin_fds[1]);
 		return 0;
 	}
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, prog_err) < 0) {
 		LOG_ERRNO(LOG_ERR, ("socketpair for stderr failed"));
-		close(prog_fds[0]);
-		close(prog_fds[1]);
+		close(stdin_fds[0]);
+		close(stdin_fds[1]);
+		close(stdout_fds[0]);
+		close(stdout_fds[1]);
 		return 0;
 	}
 
@@ -1486,8 +1496,10 @@ launch_program(work_t *work, int argc, char **argv)
 
 	if (pid == -1) {
 		LOG_ERRNO(LOG_CRIT, ("unable to fork to launch program"));
-		close(prog_fds[0]);
-		close(prog_fds[1]);
+		close(stdin_fds[0]);
+		close(stdin_fds[1]);
+		close(stdout_fds[0]);
+		close(stdout_fds[1]);
 		close(prog_err[0]);
 		close(prog_err[1]);
 		return 0;
@@ -1497,26 +1509,30 @@ launch_program(work_t *work, int argc, char **argv)
 		/* child */
 
 		close(work->network_fd);
-		close(prog_fds[0]);
+		close(stdin_fds[0]);
+		close(stdout_fds[0]);
 		close(prog_err[0]);
 		LOG(LOG_DEBUG, ("child process preparing to exec %s",
 				argv[0]));
 
-		if (dup2(prog_fds[1], STDIN_FILENO) < 0) {
+		if (dup2(stdin_fds[1], STDIN_FILENO) < 0) {
 			LOG_ERRNO(LOG_ERR, ("STDIN_FILENO dup2 failed"));
-			close(prog_fds[1]);
+			close(stdin_fds[1]);
+			close(stdout_fds[1]);
 			close(prog_err[1]);
 			return 0;
 		}
 
-		if (dup2(prog_fds[1], STDOUT_FILENO) < 0) {
+		if (dup2(stdout_fds[1], STDOUT_FILENO) < 0) {
 			LOG_ERRNO(LOG_ERR, ("STDOUT_FILENO dup2 failed"));
-			close(prog_fds[1]);
+			close(stdin_fds[1]);
+			close(stdout_fds[1]);
 			close(prog_err[1]);
 			return 0;
 		}
 
-		close(prog_fds[1]);
+		close(stdin_fds[1]);
+		close(stdout_fds[1]);
 
 		if (dup2(prog_err[1], STDERR_FILENO) < 0) {
 			LOG_ERRNO(LOG_ERR, ("STDERR_FILENO dup2 failed"));
@@ -1538,9 +1554,11 @@ launch_program(work_t *work, int argc, char **argv)
 
 	/* parent */
 
-	close(prog_fds[1]);
+	close(stdin_fds[1]);
+	close(stdout_fds[1]);
 	close(prog_err[1]);
-	work->local_out = work->local_in = prog_fds[0];
+	work->local_out = stdin_fds[0];
+	work->local_in = stdout_fds[0];
 	work->local_err = prog_err[0];
 	return 1;
 }

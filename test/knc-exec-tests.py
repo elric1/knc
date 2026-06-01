@@ -89,8 +89,7 @@ def write_bin(path, data):
 
 def append_json_line(path, obj):
     with open(path, "ab") as f:
-        f.write(json.dumps(obj, sort_keys=True).encode("utf-8"))
-        f.write(b"\n")
+        f.write(json.dumps(obj, sort_keys=True).encode("utf-8") + b"\n")
 
 
 def digest(data):
@@ -145,6 +144,16 @@ elif scenario == "drain_before_eof":
 
 elif scenario == "child_output_then_exit":
     write_all(payload(1024 * 1024 + 333))
+
+elif scenario == "stdout_close_keeps_reading":
+    append_json_line(side, {"event": "start"})
+    os.close(1)
+    append_json_line(side, {"event": "stdout_closed"})
+
+    data = read_all()
+    result = digest(data)
+    result["event"] = "read_done"
+    append_json_line(side, result)
 
 elif scenario == "connection_marker":
     data = read_all()
@@ -481,6 +490,72 @@ class KNCExecTests(unittest.TestCase):
                     server.kill()
                     server.wait()
 
+    def wait_for_json_event(self, path, event, timeout=KNC_TIMEOUT):
+        deadline = time.time() + timeout
+        seen = []
+        while time.time() < deadline:
+            if os.path.exists(path):
+                seen = self.read_json_lines(path)
+                if any(record.get("event") == event for record in seen):
+                    return seen
+            time.sleep(0.05)
+        self.fail("timed out waiting for %s in %s; saw %r" %
+                  (event, path, seen))
+
+    def run_interactive_stdout_close_keeps_reading(self, data):
+        side = self.side_path("stdout_close_keeps_reading.jsonl")
+        server, port = self.start_server(
+            "stdout_close_keeps_reading", side,
+            server_opts=["-d", "-d"])
+        client = None
+        try:
+            client = subprocess.Popen(
+                self.client_argv(port, ["-d", "-d"]),
+                env=self.client_env(),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            events = self.wait_for_json_event(side, "stdout_closed")
+            readable, _, _ = select.select(
+                [client.stdout.fileno()], [], [], 2)
+            self.assertTrue(
+                readable,
+                "client stdout did not see EOF after child closed stdout; "
+                "events=%r" % events)
+            eof = os.read(client.stdout.fileno(), 1)
+            self.assertEqual(
+                eof, b"",
+                "client stdout produced data instead of EOF: %r" % eof)
+
+            client.stdin.write(data)
+            client.stdin.close()
+            client.stdin = None
+            rest, cerr = client.communicate(timeout=KNC_TIMEOUT)
+            self.assertEqual(rest, b"")
+            self.assertEqual(
+                client.returncode, 0,
+                "client failed\nstdout:\n%s\nstderr:\n%s" %
+                (rest.decode("utf-8", "replace"),
+                 cerr.decode("utf-8", "replace"))
+            )
+            self.finish_server(server)
+            self.wait_for_json_event(side, "read_done")
+            return side
+        finally:
+            if client is not None and client.poll() is None:
+                if client.stdin is not None:
+                    client.stdin.close()
+                client.kill()
+                client.wait()
+            if server.poll() is None:
+                server.terminate()
+                try:
+                    server.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait()
+
     def test_exec_env_is_populated(self):
         side, out, _, _, _ = self.run_session("env")
         self.assertEqual(out, b"")
@@ -531,6 +606,16 @@ class KNCExecTests(unittest.TestCase):
         expected = deterministic_payload(1024 * 1024 + 333)
         _, out, _, _, _ = self.run_session("child_output_then_exit")
         self.assertEqual(out, expected)
+
+    def test_exec_child_stdout_close_still_allows_child_stdin(self):
+        data = deterministic_payload(196613)
+        side = self.run_interactive_stdout_close_keeps_reading(data)
+        events = self.read_json_lines(side)
+        self.assertIn({"event": "stdout_closed"}, events)
+        done = [event for event in events if event.get("event") == "read_done"]
+        self.assertEqual(len(done), 1, events)
+        self.assertEqual(done[0]["len"], len(data))
+        self.assertEqual(done[0]["sha256"], sha256(data))
 
     def test_exec_stderr_is_not_tunneled(self):
         side, out, _, _, _ = self.run_session("stderr_not_tunneled")
