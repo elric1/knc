@@ -602,7 +602,7 @@ get_istream(stream s, void **buf, size_t len)
 		return 0;
 	}
 
-	if (s->tail) {
+	if (s->cur && s->tail) {
 		remaining = s->tail->allocated - s->tail->len;
 
 		if (remaining >= len) {
